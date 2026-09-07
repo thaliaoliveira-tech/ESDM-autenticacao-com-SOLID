@@ -1,0 +1,30 @@
+// Schema deliberadamente minimo para o POC.
+//
+// Nao existem tabelas de sessions, refresh_tokens, roles ou oauth_accounts:
+// elas seriam infraestrutura sem contrapartida didatica neste exercicio.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id    String @id @default(cuid())
+  name  String
+  email String @unique
+
+  /// Opcional: um usuario criado exclusivamente via Google nao possui senha local.
+  passwordHash String?
+
+  /// Opcional: um usuario criado apenas com e-mail/senha nunca passou pelo Google.
+  googleId String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}

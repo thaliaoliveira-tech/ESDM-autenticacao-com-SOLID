@@ -1,0 +1,6 @@
+# Normaliza fins de linha: LF no repositorio, independente do SO do autor.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.db binary

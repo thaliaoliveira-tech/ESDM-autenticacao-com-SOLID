@@ -1,0 +1,17 @@
+# Configuracao do `npm run docs:lint`.
+extends:
+  - recommended
+
+rules:
+  # O unico servidor deste POC e o local. Apontar para um dominio ficticio de
+  # producao seria menos honesto do que manter localhost.
+  no-server-example.com: off
+
+# Aviso que permanece de proposito, e por que:
+#
+#   operation-2xx-response / operation-4xx-response em GET /auth/google
+#
+# O endpoint so redireciona (302) ou recusa por falta de configuracao (503).
+# Nao existe 2XX nem 4XX natural para ele. As regras continuam ligadas porque
+# sao uteis nos demais endpoints; silencia-las globalmente esconderia lacunas
+# reais em outro lugar.
