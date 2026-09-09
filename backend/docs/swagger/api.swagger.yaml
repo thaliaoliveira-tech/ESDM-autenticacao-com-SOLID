@@ -1,0 +1,311 @@
+openapi: 3.0.3
+
+info:
+  title: Authentication POC
+  version: 1.0.0
+  description: |
+    POC de autenticacao construida para estudar SOLID e o Strategy Pattern
+    aplicados a um backend NestJS.
+
+    **Esta e a fonte oficial da documentacao da API.** Ela e escrita a mao e
+    servida pelo Nest em `/docs`; nao e gerada a partir de decorators
+    `@ApiResponse` espalhados pelo codigo. A justificativa esta em
+    `docs/README.md`.
+
+    ## Provedores de autenticacao
+
+    A API expoe dois mecanismos, implementados como Strategies substituiveis:
+
+    | Provider | Endpoint             | Estado                                         |
+    | -------- | -------------------- | ---------------------------------------------- |
+    | `email`  | `POST /auth/login`   | sempre disponivel                              |
+    | `google` | `GET /auth/google`   | requer GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET |
+
+    ## Limitacao consciente: logout
+
+    O access token e stateless e **nao** e invalidado no servidor. O logout
+    consiste em o cliente descartar o token. Revogacao real exigiria blacklist
+    ou refresh tokens, deliberadamente fora do escopo deste POC.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Ambiente local de desenvolvimento
+
+tags:
+  - name: Autenticacao
+    description: Login, sessao e logout
+
+paths:
+  /auth/login:
+    post:
+      tags: [Autenticacao]
+      summary: Autentica por e-mail e senha
+      description: |
+        Executa a `EmailPasswordAuthStrategy` e, em caso de sucesso, emite um
+        access token JWT.
+
+        O e-mail e normalizado (aparado e convertido para minusculas) antes da
+        busca.
+
+        Credencial invalida e usuario inexistente produzem exatamente a mesma
+        resposta 401, de proposito: respostas diferentes permitiriam descobrir
+        quais e-mails estao cadastrados.
+      operationId: loginWithEmailPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            examples:
+              usuarioSeed:
+                summary: Usuario criado por `npm run db:seed`
+                value:
+                  email: demo@example.com
+                  password: Demo@123
+      responses:
+        "200":
+          description: Autenticado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Corpo da requisicao invalido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "401":
+          description: Credenciais invalidas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                statusCode: 401
+                error: InvalidCredentialsError
+                message: Credenciais invalidas.
+
+  /auth/me:
+    get:
+      tags: [Autenticacao]
+      summary: Devolve o usuario autenticado
+      description: |
+        Rota protegida. Exige o cabecalho `Authorization: Bearer <accessToken>`.
+
+        A identidade e reconstruida a partir do banco a cada requisicao, e nao
+        apenas do conteudo do token: assim, um token de usuario removido deixa
+        de funcionar imediatamente.
+      operationId: getCurrentUser
+      responses:
+        "200":
+          description: Identidade do portador do token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          description: Token ausente, invalido, expirado ou de usuario inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      tags: [Autenticacao]
+      summary: Encerra a sessao do lado do cliente
+      description: |
+        Responde `204 No Content` e nao mantem estado no servidor.
+
+        **Limitacao conhecida e intencional:** o token permanece
+        criptograficamente valido ate expirar. O contrato deste endpoint e "o
+        cliente deve descartar o token", nao "o servidor revogou o token".
+      operationId: logout
+      responses:
+        "204":
+          description: Sessao encerrada do lado do cliente
+        "401":
+          description: Requisicao nao autenticada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/google:
+    get:
+      tags: [Autenticacao]
+      summary: Inicia o fluxo OAuth do Google
+      description: |
+        Redireciona o navegador para a tela de consentimento do Google.
+
+        Nao pode ser exercitado pelo "Try it out" do Swagger UI, porque envolve
+        um redirecionamento entre dominios: abra a URL diretamente no navegador.
+      operationId: startGoogleOAuth
+      security: []
+      responses:
+        "302":
+          description: Redirecionamento para o consentimento do Google
+          headers:
+            Location:
+              description: URL de autorizacao do Google
+              schema:
+                type: string
+        "503":
+          description: Login com Google nao configurado no ambiente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/google/callback:
+    get:
+      tags: [Autenticacao]
+      summary: Callback do OAuth do Google
+      description: |
+        Endpoint chamado pelo Google apos o consentimento. Executa a
+        `GoogleAuthStrategy` (que cria o usuario ou vincula a conta existente)
+        e emite um JWT proprio da API.
+
+        Decisao arquitetural: quem protege os endpoints desta API e o JWT dela,
+        e nao o token do Google.
+      operationId: googleOAuthCallback
+      security: []
+      parameters:
+        - in: query
+          name: code
+          required: true
+          description: Codigo de autorizacao devolvido pelo Google
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Autenticado via Google
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: |
+            Consentimento recusado pela pessoa usuaria ou troca do codigo de
+            autorizacao rejeitada pelo Google.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: O provedor externo falhou ou devolveu um perfil incompleto
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Login com Google nao configurado no ambiente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token devolvido por `POST /auth/login`.
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          description: Normalizado para minusculas antes da busca.
+          example: demo@example.com
+        password:
+          type: string
+          format: password
+          minLength: 6
+          maxLength: 128
+          example: Demo@123
+
+    AuthResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken:
+          type: string
+          description: JWT assinado pela API.
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyIn0.abc
+        tokenType:
+          type: string
+          enum: [Bearer]
+        expiresIn:
+          type: string
+          description: Tempo de vida configurado em `JWT_EXPIRES_IN`.
+          example: 1h
+        user:
+          $ref: "#/components/schemas/UserResponse"
+
+    UserResponse:
+      type: object
+      required: [userId, email, name, provider]
+      properties:
+        userId:
+          type: string
+          example: clx0000000000000000000000
+        email:
+          type: string
+          format: email
+          example: demo@example.com
+        name:
+          type: string
+          example: Usuario Demo
+        provider:
+          type: string
+          enum: [email, google]
+          description: Qual AuthStrategy confirmou esta identidade.
+
+    ErrorResponse:
+      type: object
+      required: [statusCode, error, message]
+      properties:
+        statusCode:
+          type: integer
+          example: 401
+        error:
+          type: string
+          description: Nome da classe de erro da aplicacao.
+          example: InvalidCredentialsError
+        message:
+          type: string
+          example: Credenciais invalidas.
+
+    ValidationErrorResponse:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        error:
+          type: string
+          example: Bad Request
+        message:
+          type: array
+          items:
+            type: string
+          example:
+            - email deve ser um endereco de e-mail valido.
+            - password deve ter no minimo 6 caracteres.
+
+security:
+  - bearerAuth: []

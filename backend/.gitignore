@@ -1,0 +1,30 @@
+# dependencias
+node_modules/
+
+# build
+dist/
+build/
+*.tsbuildinfo
+
+# testes
+coverage/
+
+# banco de dados local (SQLite)
+*.db
+*.db-journal
+prisma/*.db
+prisma/*.db-journal
+
+# ambiente
+.env
+.env.local
+.env.test.local
+
+# logs
+*.log
+npm-debug.log*
+
+# editores / SO
+.DS_Store
+Thumbs.db
+.idea/
