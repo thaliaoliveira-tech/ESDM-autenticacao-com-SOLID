@@ -22,13 +22,32 @@ function NavigationLayout() {
         />
       </Stack.Protected>
 
+      {/* Tela de Boas-vindas (Onboarding) */}
+      <Stack.Screen
+        name="welcome"
+        options={{
+          headerShown: false,
+          gestureEnabled: false,
+          animation: "slide_from_left",
+        }}
+      />
+
       {/* Tela de Login */}
       <Stack.Screen
         name="login"
         options={{
           headerShown: false,
-          animation: "slide_from_left",
-          gestureEnabled: false,
+          animation: "slide_from_right",
+        }}
+      />
+
+      {/* Tela de Cadastro */}
+      <Stack.Screen
+        name="register"
+        options={{
+          headerShown: false,
+          animation: "slide_from_right",
+          gestureEnabled: true,
         }}
       />
 

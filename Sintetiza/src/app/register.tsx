@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -21,35 +21,27 @@ import { useAuth } from "../context/AuthContext";
 
 const { width, height } = Dimensions.get("window");
 
-export default function LoginScreen() {
+export default function RegisterScreen() {
   const router = useRouter();
   const navigation = useNavigation<any>();
   const { signIn, isLoading } = useAuth();
 
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [confirmaSenha, setConfirmaSenha] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Ao entrar na tela de login, zera o caminho da stack e define 'welcome' como raiz
-  useEffect(() => {
-    const state = navigation.getState();
-    if (!state) return;
-
-    const routes = state.routes;
-    const isAlreadyWelcomeRoot =
-      routes.length === 2 &&
-      routes[0]?.name === "welcome" &&
-      routes[1]?.name === "login";
-
-    if (!isAlreadyWelcomeRoot) {
-      navigation.reset({
-        index: 1,
-        routes: [{ name: "welcome" }, { name: "login" }],
-      });
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/welcome");
     }
-  }, [navigation]);
+  };
 
-  const handleLogin = async () => {
+  const handleRegister = async () => {
+    // Simula o cadastro e autenticação
     await signIn(email, senha);
     router.replace("/(tabs)");
   };
@@ -84,7 +76,7 @@ export default function LoginScreen() {
         <View style={styles.topBar}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={router.back}
+            onPress={handleBack}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             activeOpacity={0.7}
           >
@@ -109,8 +101,8 @@ export default function LoginScreen() {
                 titleSize={28}
                 titleColor="#0F172A"
               />
-              <Text style={styles.title}>Bem-vindo de volta!</Text>
-              <Text style={styles.subtitle}>Faça login para continuar.</Text>
+              <Text style={styles.title}>Crie sua conta</Text>
+              <Text style={styles.subtitle}>É rápido e fácil começar!</Text>
             </View>
 
             {/* Formulário */}
@@ -154,45 +146,61 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Link Esqueceu a senha */}
-              <TouchableOpacity
-                style={styles.forgotPassword}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.forgotPasswordText}>Esqueceu a senha?</Text>
-              </TouchableOpacity>
+              {/* Campo Confirmar Senha */}
+              <View style={styles.inputContainer}>
+                <Lock size={20} color="#94A3B8" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Confirme a senha"
+                  placeholderTextColor="#94A3B8"
+                  secureTextEntry={!showConfirmPassword}
+                  value={confirmaSenha}
+                  onChangeText={setConfirmaSenha}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                  activeOpacity={0.7}
+                  style={styles.eyeButton}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff size={20} color="#94A3B8" />
+                  ) : (
+                    <Eye size={20} color="#94A3B8" />
+                  )}
+                </TouchableOpacity>
+              </View>
 
-              {/* Botão Entrar */}
+              {/* Botão Cadastrar */}
               <TouchableOpacity
                 style={[
                   styles.submitButton,
                   isLoading && { opacity: 0.7 },
                 ]}
                 activeOpacity={0.85}
-                onPress={handleLogin}
+                onPress={handleRegister}
                 disabled={isLoading}
               >
                 <Text style={styles.submitButtonText}>
-                  {isLoading ? "Entrando..." : "Entrar"}
+                  {isLoading ? "Cadastrando..." : "Cadastrar"}
                 </Text>
               </TouchableOpacity>
             </View>
 
             {/* Divisor e Botões Sociais */}
             <SocialAuthButtons
-              dividerText="Ou entre com"
-              onGooglePress={handleLogin}
-              onFacebookPress={handleLogin}
+              dividerText="Ou cadastre-se com"
+              onGooglePress={handleRegister}
+              onFacebookPress={handleRegister}
             />
 
-            {/* Link para Cadastro */}
+            {/* Link para Login */}
             <View style={styles.footer}>
-              <Text style={styles.footerText}>Não tem uma conta? </Text>
+              <Text style={styles.footerText}>Já tem uma conta? </Text>
               <TouchableOpacity
-                onPress={() => router.push("/register")}
+                onPress={() => router.push("/login")}
                 activeOpacity={0.7}
               >
-                <Text style={styles.footerLink}>Cadastre-se</Text>
+                <Text style={styles.footerLink}>Entrar</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -271,21 +279,13 @@ const styles = StyleSheet.create({
   eyeButton: {
     padding: 6,
   },
-  forgotPassword: {
-    alignSelf: "flex-end",
-    marginBottom: 18,
-  },
-  forgotPasswordText: {
-    color: "#1D64ED",
-    fontSize: 13,
-    fontWeight: "500",
-  },
   submitButton: {
     backgroundColor: "#1D64ED",
     height: 52,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 6,
     shadowColor: "#1D64ED",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,

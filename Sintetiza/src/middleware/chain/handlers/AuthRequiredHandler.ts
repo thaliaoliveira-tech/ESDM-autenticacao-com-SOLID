@@ -6,11 +6,11 @@ import { BaseNavigationHandler, NavigationRequest } from "../NavigationHandler";
  */
 export class AuthRequiredHandler extends BaseNavigationHandler {
   public handle(request: NavigationRequest): void {
-    const isLoginRoute = request.segments[0] === "login";
+    const isAuthRoute = ["login", "register", "welcome"].includes(request.segments[0]);
 
     // Se autenticação estrita estiver ativada e o usuário não estiver logado
-    if (request.requireAuth && !request.isAuthenticated && !isLoginRoute) {
-      request.redirect("/login");
+    if (request.requireAuth && !request.isAuthenticated && !isAuthRoute) {
+      request.redirect("/welcome");
       return; // Interrompe a cadeia após tratar a requisição
     }
 

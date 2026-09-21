@@ -6,10 +6,10 @@ import { BaseNavigationHandler, NavigationRequest } from "../NavigationHandler";
  */
 export class GuestOnlyHandler extends BaseNavigationHandler {
   public handle(request: NavigationRequest): void {
-    const isLoginRoute = request.segments[0] === "login";
+    const isAuthRoute = ["login", "register", "welcome"].includes(request.segments[0]);
 
-    // Se o usuário já estiver logado e tentar abrir a tela de login
-    if (request.isAuthenticated && isLoginRoute) {
+    // Se o usuário já estiver logado e tentar abrir telas de login/cadastro/onboarding
+    if (request.isAuthenticated && isAuthRoute) {
       request.redirect("/(tabs)");
       return; // Interrompe a cadeia após o redirecionamento
     }

@@ -176,7 +176,7 @@ export default function ContaScreen() {
             activeOpacity={0.7}
             onPress={async () => {
               await signOut();
-              router.push("/login");
+              router.replace("/login");
             }}
           >
             <Text style={styles.logoutText}>Encerrar Sessão</Text>

@@ -25,14 +25,14 @@ export function useAuthMiddleware(options: AuthMiddlewareOptions = { requireAuth
   useEffect(() => {
     if (isLoading) return;
 
-    // Verifica se a rota atual é de autenticação (ex: login)
-    const inAuthGroup = segments[0] === "login";
+    // Verifica se a rota atual é de autenticação / onboarding (ex: login, register, welcome)
+    const inAuthGroup = ["login", "register", "welcome"].includes(segments[0]);
 
     // Se o middleware estiver configurado para exigir autenticação estrita
     if (options.requireAuth) {
       if (!isAuthenticated && !inAuthGroup) {
-        // Redireciona para login se não estiver autenticado
-        router.replace("/login");
+        // Redireciona para welcome se não estiver autenticado
+        router.replace("/welcome");
       } else if (isAuthenticated && inAuthGroup) {
         // Redireciona para as abas principais se já estiver logado
         router.replace("/(tabs)");
