@@ -65,7 +65,7 @@ export default function InicioScreen() {
         <View style={styles.header}>
           <View>
             <Text style={[styles.greetingTitle, { color: theme.textPrimary }]}>
-              Olá, Cliente 👋
+              Olá, Cliente
             </Text>
             <Text style={[styles.greetingSubtitle, { color: theme.textSecondary }]}>
               O que vamos sintetizar?
@@ -111,13 +111,13 @@ export default function InicioScreen() {
           onPress={() => {}}
         >
           <View style={styles.actionCardLeft}>
-            <View style={styles.whatsAppIconContainer}>
-              <WhatsAppIcon size={30} color="#FFFFFF" />
+            <View style={styles.iconBadge}>
+              <WhatsAppIcon size={24} color="#FFFFFF" />
             </View>
             <View style={styles.actionCardTextContainer}>
               <Text style={styles.actionCardTitle}>Nova conversa</Text>
               <Text style={styles.actionCardSubtitle}>
-                Importe uma conversa{"\n"}do WhatsApp
+                Importe uma conversa do WhatsApp
               </Text>
             </View>
           </View>
@@ -139,7 +139,7 @@ export default function InicioScreen() {
           >
             {/* Coluna 1: Espaços */}
             <View style={styles.overviewItem}>
-              <Folder size={22} color={theme.primary} />
+              <Folder size={20} color={theme.primary} />
               <Text style={[styles.overviewNumber, { color: theme.textPrimary }]}>4</Text>
               <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>Espaços</Text>
             </View>
@@ -148,7 +148,7 @@ export default function InicioScreen() {
 
             {/* Coluna 2: Tarefas */}
             <View style={styles.overviewItem}>
-              <CircleCheck size={22} color={theme.primary} />
+              <CircleCheck size={20} color={theme.primary} />
               <Text style={[styles.overviewNumber, { color: theme.textPrimary }]}>8</Text>
               <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>Tarefas</Text>
             </View>
@@ -157,7 +157,7 @@ export default function InicioScreen() {
 
             {/* Coluna 3: Pendências */}
             <View style={styles.overviewItem}>
-              <TriangleAlert size={22} color={theme.primary} />
+              <TriangleAlert size={20} color={theme.primary} />
               <Text style={[styles.overviewNumber, { color: theme.textPrimary }]}>3</Text>
               <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>Pendências</Text>
             </View>
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 18,
+    marginBottom: 16,
   },
   greetingTitle: {
     fontSize: 24,
@@ -396,14 +396,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.28,
     shadowRadius: 12,
     elevation: 4,
-    marginBottom: 8,
+    marginBottom: 20,
   },
   actionCardLeft: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
   },
-  whatsAppIconContainer: {
+  iconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 14,
   },
   actionCardTextContainer: {
@@ -436,7 +442,6 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   section: {
-    marginBottom: 24,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -461,7 +466,7 @@ const styles = StyleSheet.create({
   overviewCard: {
     borderRadius: 16,
     borderWidth: 1,
-    paddingVertical: 18,
+    paddingVertical: 16,
     paddingHorizontal: 8,
     flexDirection: "row",
     alignItems: "center",
@@ -471,14 +476,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.03,
     shadowRadius: 8,
     elevation: 1,
-    marginTop: 12,
+    marginBottom: 18,
   },
   overviewItem: {
     alignItems: "center",
     flex: 1,
   },
   overviewNumber: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "700",
     marginTop: 8,
     marginBottom: 2,

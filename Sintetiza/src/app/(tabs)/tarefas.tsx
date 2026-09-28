@@ -160,7 +160,7 @@ export default function TarefasScreen() {
         <View style={styles.header}>
           <View>
             <Text style={[styles.greetingTitle, { color: theme.textPrimary }]}>
-              Próximas Tarefas ✅
+              Tarefas
             </Text>
             <Text style={[styles.greetingSubtitle, { color: theme.textSecondary }]}>
               Ações extraídas diretamente das suas conversas
@@ -492,7 +492,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.03,
     shadowRadius: 8,
     elevation: 1,
-    marginBottom: 20,
+    marginBottom: 24,
   },
   overviewItem: {
     alignItems: "center",

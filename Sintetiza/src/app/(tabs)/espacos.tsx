@@ -140,7 +140,7 @@ export default function EspacosScreen() {
         <View style={styles.header}>
           <View>
             <Text style={[styles.greetingTitle, { color: theme.textPrimary }]}>
-              Seus Espaços 📂
+              Espaços
             </Text>
             <Text style={[styles.greetingSubtitle, { color: theme.textSecondary }]}>
               Contextos e resumos organizados por grupos
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     letterSpacing: -0.3,
-    marginBottom: 2,
+    marginBottom: 16,
   },
   sectionSubtitle: {
     fontSize: 13,
