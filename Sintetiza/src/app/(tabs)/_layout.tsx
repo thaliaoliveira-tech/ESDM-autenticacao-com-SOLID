@@ -5,7 +5,7 @@ export default function TabLayout() {
     <NativeTabs
       blurEffect="systemChromeMaterial"
       sidebarAdaptable
-      tintColor="#007AFF"
+      tintColor="#1D64ED"
     >
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Início</NativeTabs.Trigger.Label>
@@ -15,16 +15,24 @@ export default function TabLayout() {
         />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="resumos">
-        <NativeTabs.Trigger.Label>Resumos</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="espacos">
+        <NativeTabs.Trigger.Label>Espaços</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          sf={{ default: "doc.text", selected: "doc.text.fill" }}
-          md={{ default: "description", selected: "description" }}
+          sf={{ default: "briefcase", selected: "briefcase.fill" }}
+          md={{ default: "work", selected: "work" }}
+        />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="tarefas">
+        <NativeTabs.Trigger.Label>Tarefas</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "checkmark.circle", selected: "checkmark.circle.fill" }}
+          md={{ default: "check_circle", selected: "check_circle" }}
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="conta">
-        <NativeTabs.Trigger.Label>Conta</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Perfil</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{ default: "person.crop.circle", selected: "person.crop.circle.fill" }}
           md={{ default: "person", selected: "person" }}
@@ -33,4 +41,3 @@ export default function TabLayout() {
     </NativeTabs>
   );
 }
-

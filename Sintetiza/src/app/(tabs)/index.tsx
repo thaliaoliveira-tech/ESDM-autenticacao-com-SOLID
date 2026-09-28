@@ -128,7 +128,6 @@ export default function InicioScreen() {
 
         {/* 4. Seção: Visão geral */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Visão geral</Text>
           <View
             style={[
               styles.overviewCard,
@@ -171,7 +170,7 @@ export default function InicioScreen() {
             <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Seus espaços</Text>
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => router.push("/resumos")}
+              onPress={() => router.push("/espacos" as any)}
               style={styles.seeMoreButton}
             >
               <Text style={styles.seeMoreText}>Ver →</Text>
@@ -247,7 +246,7 @@ export default function InicioScreen() {
             <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Próximas tarefas</Text>
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => {}}
+              onPress={() => router.push("/tarefas" as any)}
               style={styles.seeMoreButton}
             >
               <Text style={styles.seeMoreText}>Ver →</Text>
@@ -397,7 +396,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.28,
     shadowRadius: 12,
     elevation: 4,
-    marginBottom: 24,
+    marginBottom: 8,
   },
   actionCardLeft: {
     flexDirection: "row",

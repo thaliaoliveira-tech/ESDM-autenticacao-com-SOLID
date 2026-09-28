@@ -60,6 +60,16 @@ function NavigationLayout() {
           animation: "slide_from_right",
         }}
       />
+
+      {/* Tela de Histórico Completo de Resumos (acessada a partir de Espaços) */}
+      <Stack.Screen
+        name="resumos"
+        options={{
+          headerShown: false,
+          gestureEnabled: true,
+          animation: "slide_from_right",
+        }}
+      />
     </Stack>
   );
 }

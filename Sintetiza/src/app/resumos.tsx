@@ -9,6 +9,8 @@ import {
   useColorScheme,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import { ChevronLeft } from "lucide-react-native";
 
 const CATEGORIAS = ["Todos", "Artigos", "Livros", "Reuniões"];
 
@@ -52,6 +54,7 @@ const RESUMOS_EXEMPLO = [
 ];
 
 export default function ResumosScreen() {
+  const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const [categoriaAtiva, setCategoriaAtiva] = useState("Todos");
@@ -81,6 +84,14 @@ export default function ResumosScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.7}
+          >
+            <ChevronLeft size={26} color={isDark ? "#FFFFFF" : "#0F172A"} />
+          </TouchableOpacity>
           <Text
             style={[
               styles.title,
@@ -204,10 +215,19 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 16,
   },
+  backButton: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
+  },
   title: {
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: "700",
     letterSpacing: -0.5,
   },
