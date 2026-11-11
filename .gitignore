@@ -1,0 +1,73 @@
+# ==============================================================================
+# GitIgnore - ESDM Autenticação com SOLID & Sintetiza
+# ==============================================================================
+
+# Pastas de protótipo legadas ignoradas
+prototipo/
+front-end-prototipo/
+
+# Dependências
+node_modules/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Variáveis de Ambiente e Segredos
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Build e Compilação
+dist/
+build/
+web-build/
+*.tsbuildinfo
+
+# Expo & React Native
+.expo/
+expo-env.d.ts
+.metro-health-check*
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Diretórios nativos gerados (se houver prebuild do Expo)
+ios/
+android/
+
+# Banco de dados local (SQLite / Prisma)
+*.db
+*.db-journal
+dev.db
+test.db
+backend/dev.db
+backend/test.db
+backend/prisma/*.db
+backend/prisma/*.db-journal
+
+# Cobertura de Testes
+coverage/
+.nyc_output/
+
+# Logs e Processos em Execução
+logs/
+*.log
+.run/
+
+# Editores e Sistema Operacional
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
