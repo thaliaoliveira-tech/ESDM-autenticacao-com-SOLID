@@ -1,31 +1,41 @@
 openapi: 3.0.3
 
 info:
-  title: Authentication POC
-  version: 1.0.0
+  title: Sintetiza API
+  version: 2.0.0
   description: |
-    POC de autenticacao construida para estudar SOLID e o Strategy Pattern
-    aplicados a um backend NestJS.
+    Backend do **Sintetiza**: tarefas organizadas por espacos, importacao de
+    conversas do WhatsApp, chat com IA que propoe tarefas para confirmacao,
+    preferencias, lembrete diario e conta.
 
     **Esta e a fonte oficial da documentacao da API.** Ela e escrita a mao e
-    servida pelo Nest em `/docs`; nao e gerada a partir de decorators
-    `@ApiResponse` espalhados pelo codigo. A justificativa esta em
-    `docs/README.md`.
+    servida pelo Nest em `/docs`; a justificativa esta em `docs/README.md`.
+    Os testes E2E exercitam os contratos descritos aqui.
 
-    ## Provedores de autenticacao
+    ## Autenticacao
 
-    A API expoe dois mecanismos, implementados como Strategies substituiveis:
+    | Provider | Endpoint               | Observacao                                      |
+    | -------- | ---------------------- | ----------------------------------------------- |
+    | `email`  | `POST /auth/login`     | conta criada em `POST /auth/register`           |
+    | `guest`  | `POST /auth/guest`     | "Continue como convidado"                       |
 
-    | Provider | Endpoint             | Estado                                         |
-    | -------- | -------------------- | ---------------------------------------------- |
-    | `email`  | `POST /auth/login`   | sempre disponivel                              |
-    | `google` | `GET /auth/google`   | requer GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET |
+    Toda sessao devolve um **access token** (JWT, `Authorization: Bearer`) e um
+    **refresh token** opaco e rotativo (`POST /auth/refresh`). O JWT carrega o
+    id da sessao: `POST /auth/logout` e a redefinicao de senha revogam a sessao
+    e o token deixa de valer na hora.
 
-    ## Limitacao consciente: logout
+    ## Convencoes
 
-    O access token e stateless e **nao** e invalidado no servidor. O logout
-    consiste em o cliente descartar o token. Revogacao real exigiria blacklist
-    ou refresh tokens, deliberadamente fora do escopo deste POC.
+    - Todos os recursos pertencem ao usuario autenticado. Recurso de outro
+      usuario responde **404**, como se nao existisse.
+    - Listagens devolvem `{ data, meta }` com `page`, `pageSize` (max. 100),
+      `total` e `totalPages`.
+    - Erros seguem `ErrorResponse`; `field` indica o campo do formulario.
+    - Datas de calendario sao `AAAA-MM-DD` no fuso do usuario
+      (`GET /settings`). Rotas com periodo aceitam `today` para usar a data do
+      dispositivo.
+    - Toda resposta traz `X-Request-Id` (o enviado pelo cliente ou um novo),
+      gravado na trilha de auditoria.
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
@@ -34,182 +44,1164 @@ servers:
   - url: http://localhost:3000
     description: Ambiente local de desenvolvimento
 
+security:
+  - bearerAuth: []
+
 tags:
   - name: Autenticacao
-    description: Login, sessao e logout
+    description: Cadastro, login, convidado, sessao e recuperacao de senha
+  - name: Conta
+    description: Perfil, gerenciamento e historico de atividades
+  - name: Configuracoes
+    description: Aparencia, fuso horario e lembrete diario
+  - name: Espacos
+    description: Categorias que agrupam tarefas
+  - name: Tarefas
+    description: Hoje, Amanha, Esta semana, Todas e detalhes
+  - name: Conversas
+    description: Conversas exportadas do WhatsApp
+  - name: Chat
+    description: Assistente com IA e propostas de tarefas
+  - name: Notificacoes
+    description: Avisos no app (lembrete diario)
+  - name: Infraestrutura
+    description: Disponibilidade
 
 paths:
+  # ---------------------------------------------------------------- Autenticacao
+  /auth/register:
+    post:
+      tags: [Autenticacao]
+      summary: Cria uma conta por e-mail e senha
+      description: |
+        Nome de usuario de 3 a 30 caracteres (a-z, 0-9, ponto, sublinhado),
+        normalizado para minusculas; e-mail normalizado; senha de 8 a 128
+        caracteres com confirmacao igual. Ja devolve a sessao.
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "201":
+          description: Conta criada e sessao aberta
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409":
+          description: Nome de usuario (`field=username`) ou e-mail (`field=email`) em uso
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /auth/login:
     post:
       tags: [Autenticacao]
       summary: Autentica por e-mail e senha
       description: |
-        Executa a `EmailPasswordAuthStrategy` e, em caso de sucesso, emite um
-        access token JWT.
-
-        O e-mail e normalizado (aparado e convertido para minusculas) antes da
-        busca.
-
         Credencial invalida e usuario inexistente produzem exatamente a mesma
-        resposta 401, de proposito: respostas diferentes permitiriam descobrir
-        quais e-mails estao cadastrados.
+        resposta 401, para nao revelar quais e-mails estao cadastrados.
       operationId: loginWithEmailPassword
       security: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: "#/components/schemas/LoginRequest"
+            schema: { $ref: "#/components/schemas/LoginRequest" }
             examples:
               usuarioSeed:
                 summary: Usuario criado por `npm run db:seed`
-                value:
-                  email: demo@example.com
-                  password: Demo@123
+                value: { email: demo@example.com, password: Demo@123 }
       responses:
         "200":
           description: Autenticado com sucesso
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/AuthResponse"
-        "400":
-          description: Corpo da requisicao invalido
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/guest:
+    post:
+      tags: [Autenticacao]
+      summary: Entra como convidado
+      description: |
+        Cria um usuario convidado (sem e-mail e sem senha) com dados isolados.
+        Convidados sem sessao ativa sao removidos, com seus dados, apos
+        `GUEST_RETENTION_DAYS` (30 por padrao).
+      operationId: loginAsGuest
+      security: []
+      responses:
+        "201":
+          description: Sessao de convidado aberta
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+
+  /auth/refresh:
+    post:
+      tags: [Autenticacao]
+      summary: Renova a sessao (refresh token rotativo)
+      description: |
+        Troca o refresh token por um novo par. O token usado deixa de valer:
+        reutiliza-lo responde 401.
+      operationId: refreshSession
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string, example: 3f1c...e9 }
+      responses:
+        "200":
+          description: Novo par de tokens
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401":
-          description: Credenciais invalidas
+          description: Refresh token invalido, expirado, revogado ou ja usado (`SessionExpiredError`)
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                statusCode: 401
-                error: InvalidCredentialsError
-                message: Credenciais invalidas.
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /auth/me:
     get:
       tags: [Autenticacao]
-      summary: Devolve o usuario autenticado
-      description: |
-        Rota protegida. Exige o cabecalho `Authorization: Bearer <accessToken>`.
-
-        A identidade e reconstruida a partir do banco a cada requisicao, e nao
-        apenas do conteudo do token: assim, um token de usuario removido deixa
-        de funcionar imediatamente.
+      summary: Devolve a identidade do portador do token
       operationId: getCurrentUser
       responses:
         "200":
-          description: Identidade do portador do token
+          description: Identidade
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/UserResponse"
-        "401":
-          description: Token ausente, invalido, expirado ou de usuario inexistente
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+              schema: { $ref: "#/components/schemas/UserResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /auth/logout:
     post:
       tags: [Autenticacao]
-      summary: Encerra a sessao do lado do cliente
-      description: |
-        Responde `204 No Content` e nao mantem estado no servidor.
-
-        **Limitacao conhecida e intencional:** o token permanece
-        criptograficamente valido ate expirar. O contrato deste endpoint e "o
-        cliente deve descartar o token", nao "o servidor revogou o token".
+      summary: Encerra a sessao do token
+      description: Revoga a sessao; o access token e o refresh token deixam de valer.
       operationId: logout
       responses:
-        "204":
-          description: Sessao encerrada do lado do cliente
-        "401":
-          description: Requisicao nao autenticada
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+        "204": { description: Sessao encerrada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /auth/google:
-    get:
+  /auth/password/forgot:
+    post:
       tags: [Autenticacao]
-      summary: Inicia o fluxo OAuth do Google
+      summary: Gera e devolve o link de redefinicao de senha
       description: |
-        Redireciona o navegador para a tela de consentimento do Google.
+        Gera um link de uso unico, valido por `PASSWORD_RESET_TTL_MINUTES`
+        (30). Gerar outro invalida o anterior.
 
-        Nao pode ser exercitado pelo "Try it out" do Swagger UI, porque envolve
-        um redirecionamento entre dominios: abra a URL diretamente no navegador.
-      operationId: startGoogleOAuth
+        A API nao envia e-mail: o link de redefinicao e os dados da
+        solicitacao voltam **sempre** na propria resposta, como no prototipo.
+        Essa e a unica forma de entrega. Use `resetToken` em
+        `POST /auth/password/reset`; `resetUrl` e o deep link pronto
+        (`PASSWORD_RESET_URL` + token).
+
+        E-mail sem conta cadastrada responde `404`, sem gerar link.
+      operationId: forgotPassword
       security: []
-      responses:
-        "302":
-          description: Redirecionamento para o consentimento do Google
-          headers:
-            Location:
-              description: URL de autorizacao do Google
-              schema:
-                type: string
-        "503":
-          description: Login com Google nao configurado no ambiente
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /auth/google/callback:
-    get:
-      tags: [Autenticacao]
-      summary: Callback do OAuth do Google
-      description: |
-        Endpoint chamado pelo Google apos o consentimento. Executa a
-        `GoogleAuthStrategy` (que cria o usuario ou vincula a conta existente)
-        e emite um JWT proprio da API.
-
-        Decisao arquitetural: quem protege os endpoints desta API e o JWT dela,
-        e nao o token do Google.
-      operationId: googleOAuthCallback
-      security: []
-      parameters:
-        - in: query
-          name: code
-          required: true
-          description: Codigo de autorizacao devolvido pelo Google
-          schema:
-            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
       responses:
         "200":
-          description: Autenticado via Google
+          description: Link gerado
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuthResponse"
-        "401":
-          description: |
-            Consentimento recusado pela pessoa usuaria ou troca do codigo de
-            autorizacao rejeitada pelo Google.
+                type: object
+                required:
+                  [message, email, name, resetToken, resetUrl, expiresAt, expiresInMinutes]
+                properties:
+                  message:
+                    type: string
+                    example: Link de redefinicao gerado. Ele vale por 30 minutos e so pode ser usado uma vez.
+                  email: { type: string, format: email, example: demo@example.com }
+                  name: { type: string, example: Usuario Demo }
+                  resetToken:
+                    type: string
+                    description: Token de uso unico (64 hex) para `POST /auth/password/reset`
+                    example: 3f9a1c0e7b2d4a6f8e1c3b5d7f9a0c2e4b6d8f1a3c5e7b9d0f2a4c6e8b1d3f5a
+                  resetUrl:
+                    type: string
+                    description: Link completo de redefinicao (`PASSWORD_RESET_URL` + token)
+                    example: sintetiza://redefinir-senha?token=3f9a1c0e7b2d4a6f8e1c3b5d7f9a0c2e4b6d8f1a3c5e7b9d0f2a4c6e8b1d3f5a
+                  expiresAt: { type: string, format: date-time }
+                  expiresInMinutes: { type: integer, example: 30 }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404":
+          description: Nao ha conta cadastrada com esse e-mail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /auth/password/reset:
+    post:
+      tags: [Autenticacao]
+      summary: Redefine a senha com o token do link
+      description: Troca a senha e encerra todas as sessoes da conta.
+      operationId: resetPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password, confirmPassword]
+              properties:
+                token: { type: string }
+                password: { type: string, minLength: 8, maxLength: 128 }
+                confirmPassword: { type: string }
+      responses:
+        "204": { description: Senha atualizada }
+        "400":
+          description: Senhas diferentes, senha fora do tamanho ou link expirado/usado/invalido (`field=token`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /account:
+    get:
+      tags: [Conta]
+      summary: Perfil de usuario
+      operationId: getAccount
+      responses:
+        "200":
+          description: Perfil
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [Conta]
+      summary: Atualiza nome, nome de usuario ou e-mail
+      operationId: updateAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                username: { type: string, pattern: "^[a-z0-9._]{3,30}$" }
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Convidados nao tem perfil editavel
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [Conta]
+      summary: Exclui a conta e todos os dados
+      description: Remove sessoes, preferencias, espacos, tarefas, conversas, chat e notificacoes.
+      operationId: deleteAccount
+      responses:
+        "204": { description: Conta excluida }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /account/activity:
+    get:
+      tags: [Conta]
+      summary: Trilha de auditoria do usuario
+      operationId: listAccountActivity
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Atividades, mais recentes primeiro
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "502":
-          description: O provedor externo falhou ou devolveu um perfil incompleto
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/AuditRecord" }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ----------------------------------------------------------- Configuracoes
+  /settings:
+    get:
+      tags: [Configuracoes]
+      summary: Preferencias do usuario (com padroes)
+      operationId: getSettings
+      responses:
+        "200":
+          description: Preferencias
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [Configuracoes]
+      summary: Atualiza tema, fuso e lembrete diario
+      description: |
+        Nao ha job: o lembrete e gerado quando o app consulta
+        `GET /notifications` e o horario ja passou no fuso do usuario. No
+        maximo **um** aviso por dia; mudar o horario depois do aviso nao gera
+        outro no mesmo dia.
+      operationId: updateSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                theme: { type: string, enum: [system, light, dark] }
+                timezone: { type: string, example: America/Sao_Paulo }
+                dailyReminder:
+                  type: object
+                  properties:
+                    enabled: { type: boolean }
+                    time: { type: string, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", example: "09:00" }
+      responses:
+        "200":
+          description: Preferencias atualizadas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ----------------------------------------------------------------- Espacos
+  /spaces:
+    get:
+      tags: [Espacos]
+      summary: Lista espacos com contadores
+      description: |
+        Busca sem acentos e sem diferenciar maiusculas. `meta.unassigned`
+        conta as tarefas sem espaco; `meta.showUnassigned` indica se "Sem
+        espaco" deve aparecer (ha tarefas sem espaco e a busca combina).
+      operationId: listSpaces
+      parameters:
+        - $ref: "#/components/parameters/Query"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Espacos em ordem de criacao
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Space" }
+                  meta:
+                    allOf:
+                      - $ref: "#/components/schemas/PageMeta"
+                      - type: object
+                        properties:
+                          unassigned: { $ref: "#/components/schemas/TaskCounts" }
+                          showUnassigned: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Espacos]
+      summary: Cria um espaco
+      operationId: createSpace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SpaceName" }
+      responses:
+        "201":
+          description: Espaco criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Space" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /spaces/suggestions:
+    get:
+      tags: [Espacos]
+      summary: Atalhos de "Novo espaco" ainda nao criados
+      operationId: spaceSuggestions
+      responses:
+        "200":
+          description: Nomes sugeridos (Trabalho, Faculdade, Pessoal)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /spaces/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Espacos]
+      summary: Detalha um espaco
+      operationId: getSpace
+      responses:
+        "200":
+          description: Espaco com contadores
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Space" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Espacos]
+      summary: Renomeia
+      operationId: renameSpace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SpaceName" }
+      responses:
+        "200":
+          description: Espaco renomeado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Space" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [Espacos]
+      summary: Exclui; as tarefas continuam salvas, sem espaco
+      operationId: deleteSpace
+      responses:
+        "204": { description: Espaco excluido }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ----------------------------------------------------------------- Tarefas
+  /tasks:
+    get:
+      tags: [Tarefas]
+      summary: Lista tarefas com filtros, periodos, busca, ordenacao e paginacao
+      description: |
+        - `period`: `today`, `tomorrow`, `week` (segunda a domingo) ou `all`
+          (inclui tarefas sem prazo). Periodos consideram so tarefas com prazo.
+        - `status`: `pending`, `done` ou `all`.
+        - `spaceId`: id do espaco ou `none` (sem espaco).
+        - `q`: busca em titulo, descricao, responsavel, espaco, conversa de
+          origem e prazo (AAAA-MM-DD); sem acentos; todos os termos.
+        - `sort`: `created` (mais recentes), `due` (prazo mais proximo, sem
+          prazo por ultimo) ou `priority`. Pendentes sempre antes das concluidas.
+
+        `meta.counts` traz os contadores Pendentes/Concluidas/Todas no escopo
+        de periodo e espaco (ignoram `status` e `q`), como na tela.
+      operationId: listTasks
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [pending, done, all], default: all }
+        - in: query
+          name: period
+          schema: { type: string, enum: [today, tomorrow, week, all], default: all }
+        - in: query
+          name: spaceId
+          schema: { type: string }
+        - $ref: "#/components/parameters/Query"
+        - in: query
+          name: sort
+          schema: { type: string, enum: [created, due, priority], default: created }
+        - $ref: "#/components/parameters/Today"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Tarefas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Task" }
+                  meta:
+                    allOf:
+                      - $ref: "#/components/schemas/PageMeta"
+                      - type: object
+                        properties:
+                          counts:
+                            type: object
+                            properties:
+                              pending: { type: integer }
+                              done: { type: integer }
+                              all: { type: integer }
+                          period: { type: string }
+                          today: { type: string, format: date }
+                          range:
+                            type: object
+                            nullable: true
+                            properties:
+                              from: { type: string, format: date }
+                              to: { type: string, format: date }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Tarefas]
+      summary: Cria uma tarefa (botao +)
+      description: |
+        Use `spaceId` para um espaco existente ou `spaceName` para "+ Criar
+        novo espaco" (encontra pelo nome sem acentos ou cria). Nao envie os dois.
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/TaskInput"
+                - type: object
+                  required: [title]
+      responses:
+        "201":
+          description: Tarefa criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /tasks/summary:
+    get:
+      tags: [Tarefas]
+      summary: Contadores por periodo e atrasadas (tela Hoje e cabecalhos)
+      operationId: taskSummary
+      parameters:
+        - $ref: "#/components/parameters/Today"
+      responses:
+        "200":
+          description: Resumo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  today: { type: string, format: date }
+                  periods:
+                    type: object
+                    properties:
+                      today: { $ref: "#/components/schemas/StatusCounts" }
+                      tomorrow: { $ref: "#/components/schemas/StatusCounts" }
+                      week: { $ref: "#/components/schemas/StatusCounts" }
+                      all: { $ref: "#/components/schemas/StatusCounts" }
+                  overdue: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /tasks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Tarefas]
+      summary: Detalhes da tarefa
+      operationId: getTask
+      responses:
+        "200":
+          description: Tarefa
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Tarefas]
+      summary: Edita; `null` limpa campos opcionais
+      operationId: updateTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskInput" }
+      responses:
+        "200":
+          description: Tarefa atualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Tarefas]
+      summary: Exclui
+      operationId: deleteTask
+      responses:
+        "204": { description: Tarefa excluida }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tasks/{id}/complete:
+    post:
+      tags: [Tarefas]
+      summary: Conclui (com a data informada ou hoje)
+      operationId: completeTask
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                completedOn: { type: string, format: date, nullable: true }
+      responses:
+        "200":
+          description: Tarefa concluida
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tasks/{id}/reopen:
+    post:
+      tags: [Tarefas]
+      summary: Reabre
+      operationId: reopenTask
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Tarefa pendente
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # --------------------------------------------------------------- Conversas
+  /conversations:
+    get:
+      tags: [Conversas]
+      summary: Conversas salvas (busca no nome e no texto)
+      operationId: listConversations
+      parameters:
+        - $ref: "#/components/parameters/Query"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Mais recentes primeiro
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ConversationSummary" }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Conversas]
+      summary: Importa um .txt exportado do WhatsApp (ate 10 MB)
+      description: |
+        Reconhece exportacoes Android e iOS, linhas de sistema, BOM, quebras
+        Windows e mensagens em varias linhas. O SHA-256 do conteudo evita
+        duplicar: reimportar responde **200** com `created=false` e a conversa
+        existente. A analise da IA e pedida depois em `POST /chat/analysis`.
+      operationId: importConversation
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: Conversa ja importada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportResult" }
+        "201":
+          description: Conversa importada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportResult" }
+        "400":
+          description: Sem arquivo, extensao diferente de .txt, arquivo vazio ou formato nao reconhecido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413":
+          description: Arquivo acima de 10 MB
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /conversations/sample:
+    post:
+      tags: [Conversas]
+      summary: '"Usar um exemplo": importa a conversa ficticia'
+      operationId: importSampleConversation
+      responses:
+        "200":
+          description: Exemplo ja importado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportResult" }
+        "201":
+          description: Exemplo importado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /conversations/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Conversas]
+      summary: Detalhes (mensagens, participantes, dias, periodo)
+      operationId: getConversation
+      responses:
+        "200":
+          description: Detalhes calculados sem IA
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversationDetails" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Conversas]
+      summary: Renomeia
+      operationId: renameConversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileName]
+              properties:
+                fileName: { type: string, minLength: 1, maxLength: 160 }
+      responses:
+        "200":
+          description: Conversa renomeada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversationDetails" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Conversas]
+      summary: Exclui a conversa e o historico do chat; tarefas continuam, sem vinculo
+      operationId: deleteConversation
+      responses:
+        "204": { description: Conversa excluida }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /conversations/{id}/content:
+    get:
+      tags: [Conversas]
+      summary: Texto original importado
+      operationId: getConversationContent
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Texto
+          content:
+            text/plain:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # -------------------------------------------------------------------- Chat
+  /ai/status:
+    get:
+      tags: [Chat]
+      summary: Estado da IA (Configuracoes > Inteligencia artificial)
+      operationId: aiStatus
+      responses:
+        "200":
+          description: Estado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured: { type: boolean }
+                  model: { type: string, example: deepseek/deepseek-v4.1-flash }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /chat/messages:
+    get:
+      tags: [Chat]
+      summary: Historico do fio (da conversa ou geral)
+      operationId: listChatMessages
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      responses:
+        "200":
+          description: Mensagens em ordem cronologica, com as propostas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ChatMessage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Chat]
+      summary: Envia uma pergunta e recebe a resposta da IA
+      description: |
+        O servidor monta o contexto: texto da conversa (ate ~400 mil
+        caracteres, os mais recentes), ultimas 20 mensagens do fio com o destino
+        de cada proposta, tarefas, espacos e a data de hoje.
+
+        **Streaming (SSE)** com `Accept: text/event-stream` ou `?stream=true`:
+        eventos `user_message`, `delta` (`text`), `assistant_message`, `done`
+        e, em falha depois do inicio, `error` (mesmo formato de
+        `ErrorResponse`). Fechar a conexao interrompe a resposta; o trecho
+        recebido e salvo com `interrupted=true`.
+
+        **JSON** (padrao): `201` com `ChatExchange` ao final.
+
+        A pergunta e salva antes de chamar a IA; se a IA falhar, use
+        `POST /chat/retry`.
+      operationId: askChat
+      parameters:
+        - $ref: "#/components/parameters/Stream"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                conversationId: { type: string, nullable: true }
+                content: { type: string, minLength: 1, maxLength: 4000 }
+      responses:
+        "200":
+          description: Fluxo SSE
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "201":
+          description: Resposta completa (modo JSON)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatExchange" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/Upstream" }
+        "503": { $ref: "#/components/responses/AiNotConfigured" }
+
+  /chat/retry:
+    post:
+      tags: [Chat]
+      summary: '"Tentar novamente": responde a ultima pergunta sem resposta'
+      operationId: retryChat
+      parameters:
+        - $ref: "#/components/parameters/Stream"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                conversationId: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Fluxo SSE
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "201":
+          description: Resposta completa
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatExchange" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Nao ha pergunta pendente no fio
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "502": { $ref: "#/components/responses/Upstream" }
+        "503": { $ref: "#/components/responses/AiNotConfigured" }
+
+  /chat/analysis:
+    post:
+      tags: [Chat]
+      summary: Analise da conversa (resumo, participantes, decisoes, tarefas...)
+      description: Salva a resposta com `kind=analysis`. Nao propoe tarefas.
+      operationId: analyzeConversation
+      parameters:
+        - $ref: "#/components/parameters/Stream"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [conversationId]
+              properties:
+                conversationId: { type: string }
+      responses:
+        "200":
+          description: Fluxo SSE
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "201":
+          description: Analise completa
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatExchange" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/Upstream" }
+        "503": { $ref: "#/components/responses/AiNotConfigured" }
+
+  /chat/suggestions:
+    get:
+      tags: [Chat]
+      summary: Sugestoes clicaveis (perguntas e comandos do app)
+      operationId: chatSuggestions
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      responses:
+        "200":
+          description: Sugestoes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        text: { type: string, example: Crie as tarefas desta conversa. }
+                        kind: { type: string, enum: [question, command] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /chat/proposals/{id}/confirm:
+    post:
+      tags: [Chat]
+      summary: Confirma uma proposta (opcionalmente com os ajustes de "Editar")
+      description: |
+        Aplica a acao (criar, editar, concluir, reabrir ou excluir) e resolve a
+        proposta na mesma transacao. Um espaco novo sugerido pela IA so e
+        criado aqui. Campos enviados substituem os propostos.
+      operationId: confirmProposal
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/TaskInput"
+                - type: object
+                  properties:
+                    completedOn: { type: string, format: date, nullable: true }
+      responses:
+        "200":
+          description: Proposta confirmada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proposal: { $ref: "#/components/schemas/Proposal" }
+                  task:
+                    type: object
+                    allOf: [{ $ref: "#/components/schemas/Task" }]
+                    nullable: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Proposta ja resolvida
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /chat/proposals/{id}/discard:
+    post:
+      tags: [Chat]
+      summary: Descarta uma proposta
+      operationId: discardProposal
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Proposta descartada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Proposal" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Proposta ja resolvida
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /chat/messages/{id}/proposals/confirm-all:
+    post:
+      tags: [Chat]
+      summary: '"Confirmar todas" as propostas pendentes da resposta'
+      description: Cada proposta e independente; falhas sao relatadas sem desfazer as demais.
+      operationId: confirmAllProposals
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Resultado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  confirmed: { type: integer }
+                  failures:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        proposalId: { type: string }
+                        message: { type: string }
+                  message: { $ref: "#/components/schemas/ChatMessage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ------------------------------------------------------------ Notificacoes
+  /notifications:
+    get:
+      tags: [Notificacoes]
+      summary: Notificacoes nao lidas (consultado periodicamente pelo app)
+      description: |
+        Feito para polling: o app chama a cada intervalo. Antes de listar, a
+        consulta processa o que ja venceu para o usuario — o lembrete diario,
+        se ligado, com o horario ja passado no fuso dele e ainda nao gerado
+        hoje. Consultas repetidas ou simultaneas nao duplicam o aviso.
+
+        Devolve somente as **nao lidas**, mais recentes primeiro. Uma
+        notificacao lida (`POST /notifications/{id}/read` ou `read-all`) nao
+        aparece mais.
+      operationId: listNotifications
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Notificacoes nao lidas; `meta.total` e a quantidade para o badge
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Notification" }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /notifications/{id}/read:
+    post:
+      tags: [Notificacoes]
+      summary: Marca como lida (sai da lista)
+      operationId: readNotification
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204": { description: Lida; nao aparece mais em GET /notifications }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /notifications/read-all:
+    post:
+      tags: [Notificacoes]
+      summary: Marca todas como lidas (lista fica vazia)
+      operationId: readAllNotifications
+      responses:
+        "204": { description: Todas lidas }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ---------------------------------------------------------- Infraestrutura
+  /health:
+    get:
+      tags: [Infraestrutura]
+      summary: API e banco disponiveis
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: Disponivel
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  database: { type: string, example: up }
+                  timestamp: { type: string, format: date-time }
         "503":
-          description: Login com Google nao configurado no ambiente
+          description: Banco indisponivel
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
 components:
   securitySchemes:
@@ -217,7 +1209,82 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Access token devolvido por `POST /auth/login`.
+
+  parameters:
+    Id:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    Page:
+      in: query
+      name: page
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      in: query
+      name: pageSize
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Query:
+      in: query
+      name: q
+      description: Busca sem acentos e sem diferenciar maiusculas; todos os termos precisam aparecer.
+      schema: { type: string, maxLength: 200 }
+    Today:
+      in: query
+      name: today
+      description: Data do dispositivo (AAAA-MM-DD). Sem ela vale o fuso salvo nas configuracoes.
+      schema: { type: string, format: date }
+    ConversationId:
+      in: query
+      name: conversationId
+      description: Conversa do fio; ausente = conversa geral.
+      schema: { type: string }
+    Stream:
+      in: query
+      name: stream
+      description: "true para SSE (tambem ativado por Accept: text/event-stream)."
+      schema: { type: boolean }
+
+  responses:
+    BadRequest:
+      description: Dados invalidos (`ValidationError`), com `field` e `details`
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            statusCode: 400
+            error: ValidationError
+            message: Informe o titulo da tarefa.
+            field: title
+            details: [Informe o titulo da tarefa.]
+            path: /tasks
+            timestamp: "2026-10-14T12:00:00.000Z"
+            requestId: 7c1f6a8e-1d2b-4c3d-9e8f-0a1b2c3d4e5f
+    Unauthorized:
+      description: Token ausente, invalido, expirado, de sessao encerrada ou credenciais invalidas
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: Recurso inexistente ou de outro usuario
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Conflict:
+      description: Duplicidade (nome de espaco, e-mail, nome de usuario)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Upstream:
+      description: O OpenRouter recusou, interrompeu ou nao respondeu; ou propostas invalidas
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    AiNotConfigured:
+      description: OPENROUTER_API_KEY nao definida
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   schemas:
     LoginRequest:
@@ -225,87 +1292,255 @@ components:
       required: [email, password]
       additionalProperties: false
       properties:
-        email:
-          type: string
-          format: email
-          description: Normalizado para minusculas antes da busca.
-          example: demo@example.com
-        password:
-          type: string
-          format: password
-          minLength: 6
-          maxLength: 128
-          example: Demo@123
+        email: { type: string, format: email, example: demo@example.com }
+        password: { type: string, minLength: 6, maxLength: 128, example: Demo@123 }
 
-    AuthResponse:
+    RegisterRequest:
       type: object
-      required: [accessToken, tokenType, expiresIn, user]
+      required: [username, email, password, confirmPassword]
+      additionalProperties: false
       properties:
-        accessToken:
-          type: string
-          description: JWT assinado pela API.
-          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyIn0.abc
-        tokenType:
-          type: string
-          enum: [Bearer]
-        expiresIn:
-          type: string
-          description: Tempo de vida configurado em `JWT_EXPIRES_IN`.
-          example: 1h
-        user:
-          $ref: "#/components/schemas/UserResponse"
+        username: { type: string, pattern: "^[a-z0-9._]{3,30}$", example: ana.silva }
+        email: { type: string, format: email, example: ana@example.com }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        confirmPassword: { type: string }
+        name: { type: string, minLength: 1, maxLength: 80 }
 
     UserResponse:
       type: object
       required: [userId, email, name, provider]
       properties:
-        userId:
+        userId: { type: string }
+        email: { type: string, format: email, nullable: true }
+        name: { type: string }
+        provider: { type: string, enum: [email, guest] }
+
+    AuthResponse:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn, refreshTokenExpiresAt, user]
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string, description: "Opaco (64 hex) e rotativo" }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresIn: { type: string, example: 1h }
+        refreshTokenExpiresAt: { type: string, format: date-time }
+        user: { $ref: "#/components/schemas/UserResponse" }
+
+    Account:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        username: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        isGuest: { type: boolean }
+        hasPassword: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AuditRecord:
+      type: object
+      properties:
+        id: { type: string }
+        action: { type: string, example: task.created }
+        entityType: { type: string }
+        entityId: { type: string, nullable: true }
+        metadata: { type: object, nullable: true }
+        requestId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    Settings:
+      type: object
+      properties:
+        theme: { type: string, enum: [system, light, dark] }
+        timezone: { type: string, example: America/Sao_Paulo }
+        dailyReminder:
+          type: object
+          properties:
+            enabled: { type: boolean }
+            time: { type: string, example: "09:00" }
+            lastSentOn: { type: string, format: date, nullable: true }
+        updatedAt: { type: string, format: date-time, nullable: true }
+
+    TaskCounts:
+      type: object
+      properties:
+        pending: { type: integer }
+        done: { type: integer }
+        total: { type: integer }
+
+    StatusCounts:
+      type: object
+      properties:
+        pending: { type: integer }
+        done: { type: integer }
+
+    SpaceName:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 40, example: Trabalho }
+
+    Space:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        counts: { $ref: "#/components/schemas/TaskCounts" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    TaskInput:
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, maxLength: 2000, nullable: true }
+        assignee: { type: string, maxLength: 80, nullable: true }
+        dueOn: { type: string, format: date, nullable: true }
+        priority:
           type: string
-          example: clx0000000000000000000000
-        email:
-          type: string
-          format: email
-          example: demo@example.com
-        name:
-          type: string
-          example: Usuario Demo
-        provider:
-          type: string
-          enum: [email, google]
-          description: Qual AuthStrategy confirmou esta identidade.
+          nullable: true
+          enum: [high, medium, low]
+          description: high = Urgente, medium = Pouco urgente, low = Nao urgente
+        spaceId: { type: string, nullable: true }
+        spaceName: { type: string, maxLength: 40, nullable: true }
+
+    Task:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        assignee: { type: string }
+        dueOn: { type: string, format: date, nullable: true }
+        priority: { type: string, enum: [high, medium, low], nullable: true }
+        status: { type: string, enum: [pending, done] }
+        completedOn: { type: string, format: date, nullable: true }
+        spaceId: { type: string, nullable: true }
+        conversationId: { type: string, nullable: true }
+        space:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string }
+            name: { type: string }
+        conversation:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string }
+            fileName: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ConversationSummary:
+      type: object
+      properties:
+        id: { type: string }
+        fileName: { type: string }
+        sizeBytes: { type: integer }
+        messageCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ConversationDetails:
+      allOf:
+        - $ref: "#/components/schemas/ConversationSummary"
+        - type: object
+          properties:
+            participantCount: { type: integer }
+            activeDays: { type: integer }
+            firstMessageOn: { type: string, format: date, nullable: true }
+            lastMessageOn: { type: string, format: date, nullable: true }
+            participants:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string }
+                  messageCount: { type: integer }
+                  share: { type: integer, description: "% das mensagens" }
+
+    ImportResult:
+      type: object
+      properties:
+        created: { type: boolean }
+        conversation: { $ref: "#/components/schemas/ConversationDetails" }
+
+    Proposal:
+      type: object
+      properties:
+        id: { type: string }
+        position: { type: integer }
+        ref: { type: string, example: t1 }
+        type: { type: string, enum: [create, update, complete, reopen, delete] }
+        status: { type: string, enum: [pending, confirmed, discarded, superseded] }
+        taskId: { type: string, nullable: true }
+        taskTitle: { type: string, nullable: true, description: Titulo no momento da proposta }
+        payload:
+          type: object
+          description: |
+            create: `{ task: { title, description, assignee, dueOn, priority, space } }`;
+            update: `{ changes: {...} }`; complete: `{ completedOn }`.
+        result: { type: object, nullable: true }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+        spaceIsNew: { type: boolean, description: 'Mostrar "(novo)" no cartao' }
+
+    ChatMessage:
+      type: object
+      properties:
+        id: { type: string }
+        conversationId: { type: string, nullable: true }
+        role: { type: string, enum: [user, assistant] }
+        kind: { type: string, enum: [chat, analysis] }
+        content: { type: string, description: Markdown simples }
+        interrupted: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        proposals:
+          type: array
+          items: { $ref: "#/components/schemas/Proposal" }
+
+    ChatExchange:
+      type: object
+      properties:
+        userMessage:
+          type: object
+          allOf: [{ $ref: "#/components/schemas/ChatMessage" }]
+          nullable: true
+        assistantMessage:
+          type: object
+          allOf: [{ $ref: "#/components/schemas/ChatMessage" }]
+          nullable: true
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, example: daily_reminder }
+        title: { type: string, example: Sintetiza · Hoje }
+        body: { type: string, example: Voce tem 2 tarefas pendentes para hoje. }
+        data: { type: object, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    PageMeta:
+      type: object
+      required: [page, pageSize, total, totalPages]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
 
     ErrorResponse:
       type: object
-      required: [statusCode, error, message]
+      required: [statusCode, error, message, timestamp]
       properties:
-        statusCode:
-          type: integer
-          example: 401
-        error:
-          type: string
-          description: Nome da classe de erro da aplicacao.
-          example: InvalidCredentialsError
-        message:
-          type: string
-          example: Credenciais invalidas.
-
-    ValidationErrorResponse:
-      type: object
-      required: [statusCode, message]
-      properties:
-        statusCode:
-          type: integer
-          example: 400
-        error:
-          type: string
-          example: Bad Request
-        message:
-          type: array
-          items:
-            type: string
-          example:
-            - email deve ser um endereco de e-mail valido.
-            - password deve ter no minimo 6 caracteres.
-
-security:
-  - bearerAuth: []
+        statusCode: { type: integer }
+        error: { type: string, example: NotFoundError }
+        message: { type: string }
+        field: { type: string, description: Campo relacionado ao erro }
+        details: { type: array, items: { type: string } }
+        path: { type: string }
+        timestamp: { type: string, format: date-time }
+        requestId: { type: string }

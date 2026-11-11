@@ -6,16 +6,14 @@ import { config as loadEnv } from 'dotenv';
 /**
  * Roda UMA vez antes dos testes de integracao/E2E.
  *
- * Cria um banco SQLite dedicado (`prisma/test.db`) a partir do schema, do zero.
- * Um banco novo a cada execucao e o que torna os testes deterministicos: eles
- * nao herdam nada da rodada anterior nem do banco de desenvolvimento.
+ * Cria um banco SQLite dedicado (`prisma/test.db`) aplicando as MIGRATIONS
+ * versionadas, do zero. Assim os testes tambem validam que as migrations
+ * produzem exatamente o schema que o codigo espera. Um banco novo a cada
+ * execucao torna os testes deterministicos.
  */
 export default function globalSetup(): void {
   loadEnv({ path: join(process.cwd(), '.env.test'), override: true });
 
-  // Apagar o arquivo antes torna o `db push` seguinte uma criacao, e nao um
-  // reset destrutivo: nao precisamos de `--force-reset` e o banco de
-  // desenvolvimento nunca corre risco.
   const databaseFile = join(process.cwd(), 'prisma', 'test.db');
   for (const file of [databaseFile, `${databaseFile}-journal`]) {
     if (existsSync(file)) {
@@ -23,7 +21,7 @@ export default function globalSetup(): void {
     }
   }
 
-  execSync('npx prisma db push --skip-generate', {
+  execSync('npx prisma migrate deploy', {
     stdio: 'inherit',
     env: { ...process.env },
   });

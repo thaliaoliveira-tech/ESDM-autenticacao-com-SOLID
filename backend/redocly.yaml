@@ -7,11 +7,10 @@ rules:
   # producao seria menos honesto do que manter localhost.
   no-server-example.com: off
 
-# Aviso que permanece de proposito, e por que:
+# Avisos que permanecem de proposito, e por que:
 #
-#   operation-2xx-response / operation-4xx-response em GET /auth/google
+#   operation-4xx-response em POST /auth/guest e GET /health
+#     Nao recebem entrada nem exigem autenticacao: nao existe 4XX natural.
 #
-# O endpoint so redireciona (302) ou recusa por falta de configuracao (503).
-# Nao existe 2XX nem 4XX natural para ele. As regras continuam ligadas porque
-# sao uteis nos demais endpoints; silencia-las globalmente esconderia lacunas
-# reais em outro lugar.
+# As regras continuam ligadas porque sao uteis nos demais endpoints;
+# silencia-las globalmente esconderia lacunas reais em outro lugar.

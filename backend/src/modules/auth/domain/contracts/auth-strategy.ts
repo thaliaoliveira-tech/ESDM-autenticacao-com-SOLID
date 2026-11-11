@@ -13,8 +13,7 @@ export const AUTH_STRATEGIES = Symbol('AuthStrategies');
  *
  * Contrato de comportamento (Liskov) que toda implementacao deve honrar:
  *  - sucesso           -> retorna uma AuthIdentity valida;
- *  - falha de credencial -> lanca InvalidCredentialsError;
- *  - falha do provedor -> lanca AuthenticationProviderError.
+ *  - falha de credencial -> lanca InvalidCredentialsError.
  *
  * Nenhuma implementacao pode lancar "nao suportado" para `authenticate`: o
  * metodo e obrigatorio, e quem o recusasse quebraria a substituibilidade.

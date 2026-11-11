@@ -1,11 +1,15 @@
-# Authentication POC — NestJS + SOLID + Strategy Pattern
+# Sintetiza API — NestJS + SOLID
 
-POC de autenticação construída para estudar SOLID e o Strategy Pattern em um
-backend real: dois mecanismos de login (e-mail/senha e Google), cada um isolado
-atrás do mesmo contrato, testáveis sem banco e sem framework.
+Backend do **Sintetiza**: tarefas organizadas por espaços, importação de
+conversas do WhatsApp, chat com IA que resume a conversa e **propõe tarefas
+para confirmação**, preferências, lembrete diário e conta (e-mail/senha ou
+convidado).
 
-O critério de sucesso não é "o login funciona" — é **adicionar o segundo
-provedor sem alterar o primeiro**.
+O ponto de partida foi um POC de autenticação com SOLID e Strategy Pattern; a
+mesma arquitetura (contratos no domínio, detalhes na infraestrutura) foi
+estendida a todos os módulos. O escopo funcional vem do protótipo em
+`../prototipo` — o mapeamento tela → endpoint está em
+[docs/modules.md](docs/modules.md).
 
 ---
 
@@ -13,18 +17,14 @@ provedor sem alterar o primeiro**.
 
 | Responsabilidade | Tecnologia |
 | ---------------- | ---------- |
-| Backend | NestJS 11 |
-| Linguagem | TypeScript 5 |
-| Banco | SQLite |
-| ORM | Prisma 6 |
-| Auth framework | Passport |
-| Login local | passport-local |
-| Proteção da API | passport-jwt |
-| Token | @nestjs/jwt |
-| Senhas | argon2 (argon2id) |
+| Backend | NestJS 11, TypeScript 5 |
+| Banco / ORM | SQLite, Prisma 6 (migrations versionadas) |
+| Autenticação | Passport (local, JWT), argon2id, refresh token rotativo |
+| IA | OpenRouter (DeepSeek) com streaming SSE e function calling |
+| Jobs | @nestjs/schedule (somente limpeza de sessões/convidados; o lembrete é sob demanda) |
 | Validação | class-validator + class-transformer |
-| Documentação | OpenAPI 3 / Swagger UI |
-| Testes | Jest + Supertest |
+| Documentação | OpenAPI 3 / Swagger UI em `/docs` |
+| Testes | Jest + Supertest (unitários, integração com SQLite real, E2E) |
 
 ---
 
@@ -33,111 +33,101 @@ provedor sem alterar o primeiro**.
 Requisitos: **Node.js 20+** e npm.
 
 ```bash
-# 1. dependências
 npm install
+cp .env.example .env          # Windows: copy .env.example .env
 
-# 2. variáveis de ambiente
-cp .env.example .env        # Windows: copy .env.example .env
-
-# 3. gere um JWT_SECRET e cole no .env
+# gere um JWT_SECRET e cole no .env
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
-# 4. banco de dados
-npm run db:migrate
-
-# 5. usuário de desenvolvimento
-npm run db:seed
-
-# 6. suba a API
+npm run db:migrate            # cria/atualiza prisma/dev.db (preserva dados existentes)
+npm run db:seed               # demo@example.com / Demo@123
 npm run start:dev
 ```
 
-A API responde em `http://localhost:3000` e a documentação interativa em
-`http://localhost:3000/docs`.
+API em `http://localhost:3000`, documentação interativa em
+`http://localhost:3000/docs`, disponibilidade em `GET /health`.
 
-### Credenciais de teste
+### Habilitando a IA (chat)
 
+```env
+OPENROUTER_API_KEY="sk-or-..."            # https://openrouter.ai/keys
+OPENROUTER_MODEL="deepseek/deepseek-v4.1-flash"
 ```
-demo@example.com
-Demo@123
-```
+
+Sem chave, tudo funciona exceto o chat, que responde `503` com a instrução.
+O texto da conversa aberta, as últimas mensagens e a lista de tarefas são
+enviados ao OpenRouter a cada pergunta.
+
+Todas as variáveis estão comentadas em [`.env.example`](.env.example).
 
 ---
 
 ## Experimentando
 
 ```bash
-# login
-curl -X POST http://localhost:3000/auth/login \
+# convidado (sem cadastro)
+curl -X POST http://localhost:3000/auth/guest
+TOKEN=<accessToken>
+
+# criar tarefa com espaço novo
+curl -X POST http://localhost:3000/tasks -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"email":"demo@example.com","password":"Demo@123"}'
+  -d '{"title":"Enviar relatório","dueOn":"2026-10-14","priority":"high","spaceName":"Trabalho"}'
 
-# rota protegida
-curl http://localhost:3000/auth/me \
-  -H "Authorization: Bearer <accessToken>"
+# tela Hoje
+curl "http://localhost:3000/tasks?period=today&status=pending" -H "Authorization: Bearer $TOKEN"
 
-# logout
-curl -X POST http://localhost:3000/auth/logout \
-  -H "Authorization: Bearer <accessToken>"
+# importar a conversa de exemplo e pedir as tarefas à IA (streaming)
+curl -X POST http://localhost:3000/conversations/sample -H "Authorization: Bearer $TOKEN"
+curl -N -X POST "http://localhost:3000/chat/messages?stream=true" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"conversationId":"<id>","content":"Crie as tarefas desta conversa."}'
 ```
 
 ---
 
 ## Endpoints
 
-| Método | Endpoint | Auth | Finalidade |
-| ------ | -------- | ---- | ---------- |
-| `POST` | `/auth/login` | — | Login por e-mail e senha |
-| `GET` | `/auth/me` | JWT | Usuário autenticado |
-| `POST` | `/auth/logout` | JWT | Encerrar sessão lógica |
-| `GET` | `/auth/google` | — | Iniciar OAuth do Google |
-| `GET` | `/auth/google/callback` | — | Callback do OAuth |
-| `GET` | `/docs` | — | Swagger UI |
+| Método | Endpoint | Finalidade |
+| ------ | -------- | ---------- |
+| `POST` | `/auth/register` · `/auth/login` · `/auth/guest` | Cadastro, login, convidado (devolvem a sessão) |
+| `POST` | `/auth/refresh` · `/auth/logout` | Renovar (refresh rotativo) e encerrar a sessão |
+| `GET` | `/auth/me` | Identidade do token |
+| `POST` | `/auth/password/forgot` · `/auth/password/reset` | Recuperação de senha (o link volta na resposta) |
+| `GET` `PATCH` `DELETE` | `/account` | Perfil, editar, excluir conta |
+| `GET` | `/account/activity` | Trilha de auditoria |
+| `GET` `PATCH` | `/settings` | Tema, fuso, lembrete diário |
+| `GET` `POST` | `/spaces` · `GET /spaces/suggestions` | Espaços com contadores |
+| `GET` `PATCH` `DELETE` | `/spaces/:id` | Detalhar, renomear, excluir |
+| `GET` `POST` | `/tasks` · `GET /tasks/summary` | Lista (período, status, espaço, busca, ordenação, paginação), criar, resumo |
+| `GET` `PATCH` `DELETE` | `/tasks/:id` | Detalhes, editar, excluir |
+| `POST` | `/tasks/:id/complete` · `/tasks/:id/reopen` | Concluir, reabrir |
+| `GET` `POST` | `/conversations` · `POST /conversations/sample` | Histórico com busca, importar .txt, exemplo |
+| `GET` `PATCH` `DELETE` | `/conversations/:id` · `GET /conversations/:id/content` | Detalhes, renomear, excluir, texto |
+| `GET` | `/ai/status` · `/chat/messages` · `/chat/suggestions` | Estado da IA, histórico, sugestões |
+| `POST` | `/chat/messages` · `/chat/retry` · `/chat/analysis` | Pergunta, tentar novamente, análise (JSON ou SSE) |
+| `POST` | `/chat/proposals/:id/confirm` · `/discard` · `/chat/messages/:id/proposals/confirm-all` | Propostas de tarefas |
+| `GET` `POST` | `/notifications` · `/:id/read` · `/read-all` | Avisos não lidos (polling; gera o lembrete vencido), marcar lida |
+| `GET` | `/health` · `/docs` | Disponibilidade, Swagger |
 
-O contrato completo está em
-[`docs/swagger/api.swagger.yaml`](docs/swagger/api.swagger.yaml).
-
-### Habilitando o login com Google
-
-As rotas do Google existem sempre, mas respondem `503` até que as credenciais
-sejam configuradas. Para habilitá-las, preencha no `.env`:
-
-```env
-GOOGLE_CLIENT_ID="..."
-GOOGLE_CLIENT_SECRET="..."
-GOOGLE_CALLBACK_URL="http://localhost:3000/auth/google/callback"
-```
-
-As credenciais saem do [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-(OAuth 2.0 Client ID, tipo *Web application*), com a callback URL acima
-registrada como *Authorized redirect URI*.
+Contrato completo: [`docs/swagger/api.swagger.yaml`](docs/swagger/api.swagger.yaml).
 
 ---
 
-## A ideia central
+## Arquitetura em uma imagem
 
 ```mermaid
 flowchart LR
-    HTTP["AuthController"] --> AUTH["AuthService"]
-    AUTH --> STRATEGY["AuthStrategy<br/><i>contrato</i>"]
-    STRATEGY --> EMAIL["EmailPasswordAuthStrategy"]
-    STRATEGY --> GOOGLE["GoogleAuthStrategy"]
-    EMAIL --> USERS["UserRepository"]
-    EMAIL --> HASH["PasswordHasher"]
-    AUTH --> TOKEN["TokenService"]
-    USERS --> PRISMA["PrismaUserRepository"]
-    HASH --> ARGON["Argon2PasswordHasher"]
-    TOKEN --> JWT["JwtTokenService"]
-    PRISMA --> SQLITE[("SQLite")]
+    HTTP["Controllers<br/>(presentation)"] --> APP["Casos de uso<br/>(application)"]
+    APP --> CONTRACTS["Contratos<br/>(domain)"]
+    CONTRACTS --> INFRA["Prisma, Argon2, JWT,<br/>Passport, OpenRouter<br/>(infrastructure)"]
+    INFRA --> SQLITE[("SQLite")]
 ```
 
-O controller não decide o provedor. Não existe `if (provider === 'google')` em
-lugar nenhum: as Strategies são registradas em um array e consultadas por um
-`Map`. Adicionar um terceiro provedor é criar uma classe e acrescentar uma
-linha.
-
-Detalhes em [`docs/architecture.md`](docs/architecture.md) e
-[`docs/solid.md`](docs/solid.md).
+O núcleo nunca importa Prisma, Argon2, JWT ou o cliente HTTP da IA. A escolha
+do provedor de login continua sem `if/else`: e-mail e convidado são
+Strategies registradas em um array. Detalhes em
+[`docs/architecture.md`](docs/architecture.md) e [`docs/solid.md`](docs/solid.md).
 
 ---
 
@@ -152,19 +142,18 @@ npm run lint             # ESLint com --fix
 npm run lint:check       # ESLint sem alterar arquivos
 npm run format           # Prettier
 
-npm run test             # unitários + integração
+npm test                 # unitários + integração
 npm run test:unit
 npm run test:integration
 npm run test:e2e
-npm run test:cov         # cobertura
-npm run test:watch
-
+npm run test:cov         # os três, com cobertura
 npm run docs:lint        # valida o OpenAPI
 
 npm run db:migrate       # migration em desenvolvimento
+npm run db:deploy        # aplica migrations pendentes (produção/CI)
 npm run db:seed          # usuário de desenvolvimento
 npm run db:studio        # Prisma Studio
-npm run db:reset         # recria o banco do zero
+npm run db:reset         # recria o banco do zero (apaga dados)
 ```
 
 ---
@@ -173,44 +162,25 @@ npm run db:reset         # recria o banco do zero
 
 | Documento | Conteúdo |
 | --------- | -------- |
-| [docs/README.md](docs/README.md) | Índice e por que o Swagger é um arquivo |
-| [docs/architecture.md](docs/architecture.md) | Camadas, dependências, papel do Passport e do Prisma |
+| [docs/modules.md](docs/modules.md) | Módulos, regras de negócio, protótipo → endpoint, integração com o app |
+| [docs/architecture.md](docs/architecture.md) | Camadas, dependências, erros, autorização, decisões |
 | [docs/solid.md](docs/solid.md) | Cada princípio apontando para arquivos reais |
-| [docs/authentication-flow.md](docs/authentication-flow.md) | Login, JWT, Google, logout |
-| [docs/database.md](docs/database.md) | Schema, migrations, seed |
-| [docs/testing.md](docs/testing.md) | Pirâmide, mocks, cobertura |
+| [docs/authentication-flow.md](docs/authentication-flow.md) | Cadastro, login, convidado, sessões, refresh, logout, recuperação |
+| [docs/database.md](docs/database.md) | Modelo, relacionamentos, índices, migrations, transações |
+| [docs/testing.md](docs/testing.md) | Pirâmide, fakes, cobertura, casos cobertos |
 
 ---
 
-## Limitações conscientes
+## Pendências e limites conhecidos
 
-Este POC é pequeno de propósito. O que ficou de fora, e por quê:
-
-| Fora do escopo | Motivo |
-| -------------- | ------ |
-| Refresh token | Duplicaria a superfície sem ilustrar nada novo de SOLID |
-| Revogação de token no logout | Exigiria blacklist/Redis; a limitação está documentada e testada |
-| RBAC / permissões | Assunto de autorização, não de autenticação |
-| Cadastro, recuperação de senha, confirmação de e-mail | O seed cobre a necessidade de testar login |
-| Redis, filas, Docker obrigatório, microserviços | Infraestrutura sem contrapartida didática |
-
-O logout merece destaque: ele responde `204` e **não invalida o token**. O
-cliente deve descartá-lo. Há um teste E2E que documenta esse comportamento
-para que ninguém o encontre achando que é bug — ver
-[docs/authentication-flow.md](docs/authentication-flow.md#logout).
-
----
-
-## Extensões recomendadas no VS Code
-
-| Extensão | Para quê |
-| -------- | -------- |
-| **Prisma** (oficial) | Highlight e autocomplete no `schema.prisma` |
-| **SQLite Viewer** | Abrir `prisma/dev.db` direto no editor |
-| **Markdown Preview Mermaid Support** (Matt Bierner) | Ver os diagramas dos `.md` (`Ctrl+Shift+V`) |
-| **Markdown All in One** | Índice, listas e atalhos nos `.md` |
-| **YAML** (Red Hat) | Editar `api.swagger.yaml` com validação |
-| **ESLint** + **Prettier** | Lint e formatação automáticos |
+| Item | Situação |
+| ---- | -------- |
+| Envio de e-mail na recuperação de senha | Não há envio de e-mail: `POST /auth/password/forgot` devolve o link e os dados na própria resposta, em qualquer ambiente. |
+| Push com o app fechado | O lembrete é gerado quando o app consulta `GET /notifications`; push (Expo/FCM/APNs) exige registrar tokens de dispositivo. |
+| Integração do app mobile | O app `Sintetiza/` ainda usa dados simulados; o passo a passo está em [docs/modules.md](docs/modules.md#integração-com-o-app-mobile-sintetiza). |
+| Busca textual em escala | Filtros estruturados rodam no banco; a busca sem acentos roda em memória por usuário. Para volumes grandes: PostgreSQL com `unaccent` + índice trigram ou FTS. |
+| Converter convidado em conta | Como no protótipo, criar conta a partir do convidado começa um perfil novo; migrar os dados seria uma extensão. |
+| Rate limiting | Não há limite de requisições por IP/usuário (relevante para login e chat). |
 
 ---
 

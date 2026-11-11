@@ -43,10 +43,12 @@ Nesses ambientes, acordos, decisões e prazos frequentemente se perdem em meio a
 O repositório reflete as boas práticas de Engenharia de Software modernas, aplicando rigorosamente os princípios **SOLID** e padrões de projeto estruturais e comportamentais (GoF):
 
 ### 🔹 Backend (NestJS & Prisma)
-- **Framework**: NestJS com TypeScript.
-- **Banco de Dados**: SQLite via Prisma ORM.
-- **Padrão Strategy (GoF)**: Sistema de autenticação desacoplado utilizando estratégias do Passport (`LocalStrategy`, `JwtStrategy`, `GoogleOAuthStrategy`). O design respeita o **Princípio Aberto/Fechado (OCP)**, permitindo adicionar novos provedores de login sem modificar a regra de negócio central.
-- **Documentação de API**: Swagger OpenAPI integrado com documentação interativa.
+- **Framework**: NestJS com TypeScript, organizado por módulos de domínio (`auth`, `users`, `settings`, `spaces`, `tasks`, `conversations`, `chat`, `notifications`, `audit`), cada um com as camadas `domain` → `application` → `presentation`/`infrastructure`.
+- **Banco de Dados**: SQLite via Prisma ORM, com migrations versionadas, integridade referencial, índices e transações.
+- **Padrão Strategy (GoF)**: autenticação por e-mail/senha e **convidado**, cada uma uma Strategy registrada sem `if/else` (**Princípio Aberto/Fechado**). Sessões com JWT + refresh token rotativo e logout real.
+- **IA**: chat sobre a conversa importada (DeepSeek via OpenRouter) com streaming, análise automática e **propostas de tarefas que só são salvas após confirmação**.
+- **Notificações**: o app consulta periodicamente; a própria consulta gera o lembrete diário vencido. Um job apenas limpa sessões e convidados expirados.
+- **Documentação de API**: Swagger OpenAPI em `/docs`; detalhes em `backend/README.md` e `backend/docs/`.
 
 ### 🔹 Frontend Mobile (React Native & Expo)
 - **Framework**: React Native com Expo (SDK 52/53) e TypeScript.
@@ -60,10 +62,11 @@ O repositório reflete as boas práticas de Engenharia de Software modernas, apl
 
 ```
 ESDM-autenticacao-com-SOLID/
-├── backend/                  # API NestJS (Autenticação, Prisma, SQLite)
-│   ├── src/                  # Módulos, estratégias de auth, controllers e services
+├── backend/                  # API NestJS (auth, tarefas, espaços, conversas, chat com IA, lembretes)
+│   ├── src/                  # Módulos de domínio: domain, application, presentation, infrastructure
 │   ├── prisma/               # Schema do banco, migrações e seeds
-│   └── docs/                 # Documentação Swagger/OpenAPI
+│   ├── test/                 # Testes unitários, de integração (SQLite real) e E2E
+│   └── docs/                 # Arquitetura, banco, módulos, fluxos e Swagger/OpenAPI
 │
 └── Sintetiza/                # Aplicativo Mobile (React Native + Expo)
     ├── src/

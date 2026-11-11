@@ -31,19 +31,30 @@ describe('JwtTokenService', () => {
   it('gera um token verificavel', async () => {
     const service = buildService();
 
-    const token = await service.generate(identity);
+    const token = await service.generate(identity, 'session-1');
 
     expect(token.split('.')).toHaveLength(3);
     await expect(service.verify(token)).resolves.toEqual({
       subject: 'user-1',
       email: 'demo@example.com',
       provider: 'email',
+      sessionId: 'session-1',
     });
+  });
+
+  it('carrega a sessao no claim "sid"', async () => {
+    const service = buildService();
+    const token = await service.generate(identity, 'session-42');
+
+    const [, payload] = token.split('.');
+    const claims = JSON.parse(Buffer.from(payload, 'base64').toString()) as Record<string, unknown>;
+
+    expect(claims.sid).toBe('session-42');
   });
 
   it('traduz "sub" do JWT para "subject" do dominio', async () => {
     const service = buildService();
-    const token = await service.generate(identity);
+    const token = await service.generate(identity, 'session-1');
 
     const [, payload] = token.split('.');
     const claims = JSON.parse(Buffer.from(payload, 'base64').toString()) as Record<string, unknown>;
@@ -61,7 +72,7 @@ describe('JwtTokenService', () => {
 
   it('rejeita token expirado', async () => {
     const service = buildService('0s');
-    const token = await service.generate(identity);
+    const token = await service.generate(identity, 'session-1');
 
     await expect(service.verify(token)).rejects.toThrow(/expired/i);
   });

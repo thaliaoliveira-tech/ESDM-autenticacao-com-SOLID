@@ -4,7 +4,6 @@
 
 # Pastas de protótipo legadas ignoradas
 prototipo/
-front-end-prototipo/
 
 # Dependências
 node_modules/

@@ -8,7 +8,7 @@ import {
   InvalidCredentialsError,
   UnsupportedAuthProviderError,
 } from '../../src/shared/errors/application-error';
-import { FakeTokenService } from '../helpers/fakes';
+import { buildSessionKit } from '../helpers/fakes';
 
 /** Strategy de teste: prova que o service so depende do contrato. */
 class StubStrategy implements AuthStrategy<{ ok: boolean }> {
@@ -38,11 +38,11 @@ describe('AuthService', () => {
 
   it('expoe os providers registrados', () => {
     const service = new AuthService(
-      [new StubStrategy('email', identity), new StubStrategy('google', identity)],
-      new FakeTokenService(),
+      [new StubStrategy('email', identity), new StubStrategy('guest', identity)],
+      buildSessionKit().service,
     );
 
-    expect(service.availableProviders).toEqual(['email', 'google']);
+    expect(service.availableProviders).toEqual(['email', 'guest']);
   });
 
   it('recusa duas Strategies para o mesmo provider', () => {
@@ -50,48 +50,53 @@ describe('AuthService', () => {
       () =>
         new AuthService(
           [new StubStrategy('email', identity), new StubStrategy('email', identity)],
-          new FakeTokenService(),
+          buildSessionKit().service,
         ),
     ).toThrow(/Mais de uma AuthStrategy/);
   });
 
   it('delega a autenticacao para a Strategy do provider pedido', async () => {
     const email = new StubStrategy('email', identity);
-    const google = new StubStrategy('google', { ...identity, provider: 'google' });
-    const service = new AuthService([email, google], new FakeTokenService());
+    const guest = new StubStrategy('guest', { ...identity, provider: 'guest' });
+    const service = new AuthService([email, guest], buildSessionKit().service);
 
-    await service.authenticate('google', { ok: true });
+    await service.authenticate('guest', { ok: true });
 
-    expect(google.authenticateCalls).toHaveLength(1);
+    expect(guest.authenticateCalls).toHaveLength(1);
     expect(email.authenticateCalls).toHaveLength(0);
   });
 
   it('rejeita provider sem Strategy registrada', async () => {
-    const service = new AuthService([new StubStrategy('email', identity)], new FakeTokenService());
+    const service = new AuthService(
+      [new StubStrategy('email', identity)],
+      buildSessionKit().service,
+    );
 
-    await expect(service.authenticate('google', { ok: true })).rejects.toBeInstanceOf(
+    await expect(service.authenticate('guest', { ok: true })).rejects.toBeInstanceOf(
       UnsupportedAuthProviderError,
     );
   });
 
-  it('emite a sessao a partir de uma identidade confirmada', async () => {
-    const tokens = new FakeTokenService();
-    const service = new AuthService([new StubStrategy('email', identity)], tokens);
+  it('emite a sessao (access + refresh) a partir de uma identidade confirmada', async () => {
+    const kit = buildSessionKit();
+    const service = new AuthService([new StubStrategy('email', identity)], kit.service);
 
     const session = await service.issueSession(identity);
 
     expect(session).toEqual({
       accessToken: 'token-for:user-1',
+      refreshToken: expect.stringMatching(/^[a-f0-9]{64}$/) as string,
       tokenType: 'Bearer',
       expiresIn: '1h',
+      refreshTokenExpiresAt: '2026-11-13T12:00:00.000Z',
       user: identity,
     });
+    expect(kit.sessions.sessions.size).toBe(1);
   });
 
   it('login executa autenticacao e emissao de token, nessa ordem', async () => {
-    const tokens = new FakeTokenService();
     const strategy = new StubStrategy('email', identity);
-    const service = new AuthService([strategy], tokens);
+    const service = new AuthService([strategy], buildSessionKit().service);
 
     const session = await service.login('email', { ok: true });
 
@@ -100,12 +105,13 @@ describe('AuthService', () => {
   });
 
   it('NAO emite token quando a autenticacao falha', async () => {
-    const tokens = new FakeTokenService();
-    const service = new AuthService([new StubStrategy('email', null)], tokens);
+    const kit = buildSessionKit();
+    const service = new AuthService([new StubStrategy('email', null)], kit.service);
 
     await expect(service.login('email', { ok: false })).rejects.toBeInstanceOf(
       InvalidCredentialsError,
     );
-    expect(tokens.generateCalls).toHaveLength(0);
+    expect(kit.tokens.generateCalls).toHaveLength(0);
+    expect(kit.sessions.sessions.size).toBe(0);
   });
 });

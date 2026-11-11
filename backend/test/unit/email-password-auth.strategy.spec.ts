@@ -56,12 +56,9 @@ describe('EmailPasswordAuthStrategy', () => {
     ).rejects.toBeInstanceOf(InvalidCredentialsError);
   });
 
-  it('rejeita usuario sem senha local (conta criada via Google)', async () => {
-    const googleOnly = InMemoryUserRepository.buildUser({
-      passwordHash: null,
-      googleId: 'google-123',
-    });
-    const strategy = buildStrategy(new InMemoryUserRepository([googleOnly]));
+  it('rejeita usuario sem senha local', async () => {
+    const withoutPassword = InMemoryUserRepository.buildUser({ passwordHash: null });
+    const strategy = buildStrategy(new InMemoryUserRepository([withoutPassword]));
 
     await expect(
       strategy.authenticate({ email: 'demo@example.com', password: 'Demo@123' }),

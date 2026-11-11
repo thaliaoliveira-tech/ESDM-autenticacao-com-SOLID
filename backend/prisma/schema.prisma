@@ -1,7 +1,18 @@
-// Schema deliberadamente minimo para o POC.
+// Modelo de dados do Sintetiza.
 //
-// Nao existem tabelas de sessions, refresh_tokens, roles ou oauth_accounts:
-// elas seriam infraestrutura sem contrapartida didatica neste exercicio.
+// Referencia funcional: a pasta `prototipo/` (contas, sessoes, tarefas, espacos,
+// conversas importadas do WhatsApp, chat com IA, propostas de tarefas,
+// preferencias e lembrete diario). Ver docs/database.md.
+//
+// Convencoes:
+//  - Todo dado de negocio pertence a um usuario (`userId`) e e apagado junto com
+//    ele (onDelete: Cascade). Acesso entre usuarios e bloqueado na aplicacao.
+//  - SQLite nao tem enum: os valores permitidos (status, prioridade, tipo de
+//    proposta...) sao validados no dominio e documentados ao lado do campo.
+//  - Datas de calendario (prazo, conclusao) sao `String` AAAA-MM-DD: sao datas
+//    "de parede" do usuario, sem fuso, e a ordem lexica coincide com a temporal.
+//  - Exclusao fisica: o prototipo trata exclusoes como definitivas. Excluir um
+//    espaco ou uma conversa preserva as tarefas (onDelete: SetNull).
 
 generator client {
   provider = "prisma-client-js"
@@ -13,18 +24,275 @@ datasource db {
 }
 
 model User {
-  id    String @id @default(cuid())
-  name  String
-  email String @unique
+  id   String @id @default(cuid())
+  name String
 
-  /// Opcional: um usuario criado exclusivamente via Google nao possui senha local.
+  /// Nome de usuario unico (3 a 30: a-z, 0-9, ponto, sublinhado). Nulo para convidados.
+  username String? @unique
+
+  /// Nulo apenas para convidados.
+  email String? @unique
+
+  /// Nulo apenas para convidados.
   passwordHash String?
 
-  /// Opcional: um usuario criado apenas com e-mail/senha nunca passou pelo Google.
-  googleId String? @unique
+  /// Sessao de convidado: sem credenciais, removida pela manutencao apos inatividade.
+  isGuest Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sessions            Session[]
+  passwordResetTokens PasswordResetToken[]
+  settings            UserSettings?
+  spaces              Space[]
+  tasks               Task[]
+  conversations       Conversation[]
+  chatMessages        ChatMessage[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+
+  @@index([isGuest, createdAt])
   @@map("users")
+}
+
+/// Sessao autenticada: um par access token (JWT com `sid`) + refresh token rotativo.
+model Session {
+  id               String    @id @default(cuid())
+  userId           String
+  /// Provedor usado ao entrar: email | guest.
+  provider         String
+  /// SHA-256 do refresh token. O token em claro nunca e armazenado.
+  refreshTokenHash String    @unique
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  lastUsedAt       DateTime  @default(now())
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+/// Link de redefinicao de senha: uso unico, expira em 30 minutos.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+/// Preferencias por perfil (tela Conta -> Configuracoes).
+model UserSettings {
+  userId             String   @id
+  /// system | light | dark
+  theme              String   @default("system")
+  /// Fuso IANA usado para "hoje", periodos de tarefas e o lembrete diario.
+  timezone           String   @default("America/Sao_Paulo")
+  reminderEnabled    Boolean  @default(false)
+  /// HH:MM no fuso do usuario.
+  reminderTime       String   @default("09:00")
+  /// Ultimo dia (AAAA-MM-DD) em que o lembrete foi gerado: no maximo um por dia.
+  reminderLastSentOn String?
+  updatedAt          DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([reminderEnabled])
+  @@map("user_settings")
+}
+
+/// Espaco (categoria) que agrupa tarefas: Trabalho, Faculdade, Pessoal...
+model Space {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  /// Nome sem acentos, minusculo e com espacos colapsados: unico por usuario.
+  nameKey   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@unique([userId, nameKey])
+  @@index([userId, createdAt])
+  @@map("spaces")
+}
+
+model Task {
+  id             String   @id @default(cuid())
+  userId         String
+  spaceId        String?
+  /// Conversa de origem (tarefa criada a partir de uma proposta da IA).
+  conversationId String?
+  title          String
+  description    String   @default("")
+  assignee       String   @default("")
+  /// AAAA-MM-DD ou nulo (sem prazo).
+  dueOn          String?
+  /// high (Urgente) | medium (Pouco urgente) | low (Nao urgente) | nulo
+  priority       String?
+  /// pending | done
+  status         String   @default("pending")
+  /// AAAA-MM-DD; preenchido somente quando status = done.
+  completedOn    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  space        Space?         @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  conversation Conversation?  @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  proposals    TaskProposal[]
+
+  @@index([userId, status])
+  @@index([userId, dueOn])
+  @@index([userId, spaceId])
+  @@index([userId, createdAt])
+  @@index([conversationId])
+  @@map("tasks")
+}
+
+/// Conversa exportada do WhatsApp (.txt). O texto e imutavel apos a importacao.
+model Conversation {
+  id               String   @id @default(cuid())
+  userId           String
+  fileName         String
+  sizeBytes        Int
+  content          String
+  /// SHA-256 do texto com quebras normalizadas: impede importar duas vezes.
+  fingerprint      String
+  messageCount     Int
+  participantCount Int
+  activeDays       Int
+  firstMessageOn   String?
+  lastMessageOn    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user         User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  participants ConversationParticipant[]
+  messages     ChatMessage[]
+  tasks        Task[]
+
+  @@unique([userId, fingerprint])
+  @@index([userId, createdAt])
+  @@map("conversations")
+}
+
+/// Participantes calculados na importacao (o texto nao muda, entao o calculo e definitivo).
+model ConversationParticipant {
+  id             String @id @default(cuid())
+  conversationId String
+  name           String
+  messageCount   Int
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, name])
+  @@map("conversation_participants")
+}
+
+/// Mensagem do chat com a IA. `conversationId` nulo = conversa geral do usuario.
+model ChatMessage {
+  id             String   @id @default(cuid())
+  userId         String
+  conversationId String?
+  /// user | assistant
+  role           String
+  /// chat | analysis
+  kind           String   @default("chat")
+  content        String
+  /// Resposta interrompida pelo usuario antes do fim do streaming.
+  interrupted    Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation?  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  proposals    TaskProposal[]
+
+  @@index([userId, conversationId, createdAt])
+  @@map("chat_messages")
+}
+
+/// Proposta de acao sobre tarefas feita pela IA. Nada e salvo ate a confirmacao.
+model TaskProposal {
+  id         String    @id @default(cuid())
+  messageId  String
+  position   Int
+  /// Identificador da proposta dado pela IA; reenviar o mesmo ref substitui a pendente.
+  ref        String
+  /// create | update | complete | reopen | delete
+  type       String
+  /// pending | confirmed | discarded | superseded
+  status     String    @default("pending")
+  taskId     String?
+  /// Titulo da tarefa no momento da proposta: o historico continua legivel apos exclusoes.
+  taskTitle  String?
+  /// JSON com os dados propostos (campos da tarefa, alteracoes ou data de conclusao).
+  payload    String
+  /// JSON com o que foi efetivamente aplicado na confirmacao.
+  result     String?
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  task    Task?       @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@unique([messageId, position])
+  @@index([status, ref])
+  @@index([taskId])
+  @@map("task_proposals")
+}
+
+/// Avisos dentro do app (por exemplo, o lembrete diario, gerado quando o app consulta as notificacoes).
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  /// daily_reminder
+  type      String
+  title     String
+  body      String
+  /// JSON opcional com dados para navegacao (ex.: { "view": "today" }).
+  data      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+/// Trilha de auditoria das operacoes relevantes do usuario.
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  /// JSON com detalhes nao sensiveis da operacao.
+  metadata   String?
+  requestId  String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([action])
+  @@map("audit_logs")
 }

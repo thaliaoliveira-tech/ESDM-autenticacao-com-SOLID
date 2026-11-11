@@ -15,7 +15,7 @@ cerimônia, e isso também é um erro.
 | [`AuthController`](../src/modules/auth/presentation/auth.controller.ts) | Traduzir HTTP em casos de uso | a API HTTP muda |
 | [`AuthService`](../src/modules/auth/application/auth.service.ts) | Orquestrar autenticação + emissão de sessão | o fluxo do caso de uso muda |
 | [`EmailPasswordAuthStrategy`](../src/modules/auth/application/strategies/email-password-auth.strategy.ts) | Autenticar por e-mail e senha | a regra do login local muda |
-| [`GoogleAuthStrategy`](../src/modules/auth/application/strategies/google-auth.strategy.ts) | Autenticar por Google | a regra de vínculo de conta muda |
+| [`GuestAuthStrategy`](../src/modules/auth/application/strategies/guest-auth.strategy.ts) | Entrar como convidado | a regra da sessão de convidado muda |
 | [`Argon2PasswordHasher`](../src/modules/auth/infrastructure/security/argon2-password-hasher.ts) | Hash e verificação de senha | trocamos o algoritmo |
 | [`JwtTokenService`](../src/modules/auth/infrastructure/security/jwt-token.service.ts) | Emitir e ler tokens | trocamos o formato do token |
 | [`PrismaUserRepository`](../src/modules/users/infrastructure/prisma-user.repository.ts) | Persistir usuários | trocamos o banco/ORM |
@@ -47,27 +47,33 @@ Depois:
 AuthStrategy
      ↑
      ├── EmailPasswordAuthStrategy
-     └── GoogleAuthStrategy
+     └── GuestAuthStrategy
 ```
 
-Para adicionar o Google **não foi alterada nenhuma linha** de:
+O "Continue como convidado" do protótipo virou
+[`GuestAuthStrategy`](../src/modules/auth/application/strategies/guest-auth.strategy.ts):
+uma classe nova e uma linha no array `AUTH_STRATEGIES` de
+[`auth.module.ts`](../src/modules/auth/infrastructure/auth.module.ts).
+`AuthController` ganhou uma rota (`POST /auth/guest` chama
+`auth.login('guest', ...)`), mas **não foi alterada nenhuma linha** de:
 
-- `AuthController`
 - `AuthService`
 - `EmailPasswordAuthStrategy`
 - `JwtTokenService`
 - `Argon2PasswordHasher`
-- `PrismaUserRepository`
-
-O que mudou: uma classe nova, uma linha no array `AUTH_STRATEGIES` de
-[`auth.module.ts`](../src/modules/auth/infrastructure/auth.module.ts), e
-métodos novos no `UserRepository` (`findByGoogleId`, `createFromGoogle`,
-`linkGoogleAccount`) — extensão do contrato de persistência, não alteração das
-regras existentes.
 
 > **Sinal de alerta.** Se algum dia for preciso abrir o `AuthService` e
-> escrever `if (provider === 'google')`, a arquitetura terá falhado no que se
+> escrever `if (provider === 'guest')`, a arquitetura terá falhado no que se
 > propôs. A escolha da Strategy é uma consulta a um `Map`, não um condicional.
+
+O mesmo desenho aparece fora da autenticação:
+
+| Contrato | Implementação atual | Trocar por |
+| -------- | ------------------- | ---------- |
+| `AiProvider` | `OpenRouterProvider` (DeepSeek) | outro modelo/endpoint, ou o roteiro dos testes |
+| `TransactionManager` | `PrismaTransactionManager` | outro ORM |
+| `*Repository` | `Prisma*Repository` | outro banco |
+| `Clock` | `SystemClock` | `FixedClock` nos testes |
 
 ---
 
@@ -85,7 +91,6 @@ precisa valer para **todas**:
 | -------- | ------------------------- |
 | sucesso | retornar uma `AuthIdentity` completa |
 | credencial inválida | lançar `InvalidCredentialsError` |
-| falha do provedor | lançar `AuthenticationProviderError` |
 
 O que quebraria Liskov:
 
@@ -123,9 +128,9 @@ interface AuthStrategy {
 }
 ```
 
-Com ele, `GoogleAuthStrategy` seria obrigada a implementar `hashPassword()` —
-que não faz sentido para OAuth. O resultado seria um método vazio ou um
-`throw`, e aí Liskov cairia junto.
+Com ele, `GuestAuthStrategy` seria obrigada a implementar `hashPassword()` —
+que não faz sentido para quem entra sem senha. O resultado seria um método
+vazio ou um `throw`, e aí Liskov cairia junto.
 
 O que foi escrito, quatro contratos pequenos e independentes:
 
@@ -136,12 +141,11 @@ O que foi escrito, quatro contratos pequenos e independentes:
 | [`TokenService`](../src/modules/auth/domain/contracts/token-service.ts) | `generate`, `verify`, `expiresIn` | `AuthService` |
 | [`UserRepository`](../src/modules/users/domain/contracts/user.repository.ts) | 5 buscas/escritas | ambas as Strategies |
 
-Repare que `GoogleAuthStrategy` **não conhece** `PasswordHasher`: ela não
+Repare que `GuestAuthStrategy` **não conhece** `PasswordHasher`: ela não
 depende de nada que não usa.
 
-> **Autocrítica honesta.** `UserRepository` é o maior dos contratos, com cinco
-> métodos, e `findByGoogleId`/`createFromGoogle`/`linkGoogleAccount` só
-> interessam à Strategy do Google. Segregar em `UserReader` + `GoogleUserWriter`
+> **Autocrítica honesta.** `UserRepository` é o maior dos contratos, e cada
+> Strategy usa só uma parte dele. Segregar em `UserReader` + `UserWriter`
 > seria mais puro. Não foi feito porque, com dois provedores, a indireção extra
 > custaria mais clareza do que entregaria. É um bom exemplo de que o princípio
 > tem um ponto de aplicação, não é um absoluto.
@@ -212,7 +216,7 @@ flowchart TD
 | Princípio | Onde olhar primeiro |
 | --------- | ------------------- |
 | S | qualquer classe de `infrastructure/security/` |
-| O | `GoogleAuthStrategy` + o array `AUTH_STRATEGIES` |
+| O | `GuestAuthStrategy` + o array `AUTH_STRATEGIES` |
 | L | o contrato de comportamento em `auth-strategy.ts` |
 | I | os quatro contratos separados em `domain/contracts/` |
 | D | o construtor de `EmailPasswordAuthStrategy` |

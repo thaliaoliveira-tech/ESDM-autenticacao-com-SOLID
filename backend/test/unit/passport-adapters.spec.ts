@@ -1,31 +1,21 @@
-import {
-  ServiceUnavailableException,
-  UnauthorizedException,
-  type ExecutionContext,
-} from '@nestjs/common';
-import type { ConfigService } from '@nestjs/config';
+import { UnauthorizedException } from '@nestjs/common';
 import { AuthService } from '../../src/modules/auth/application/auth.service';
 import { EmailPasswordAuthStrategy } from '../../src/modules/auth/application/strategies/email-password-auth.strategy';
 import { LocalPassportStrategy } from '../../src/modules/auth/infrastructure/passport/local-passport.strategy';
 import { JwtPassportStrategy } from '../../src/modules/auth/infrastructure/passport/jwt-passport.strategy';
-import { GoogleAuthGuard } from '../../src/modules/auth/infrastructure/guards/google-auth.guard';
 import { InvalidCredentialsError } from '../../src/shared/errors/application-error';
-import { FakePasswordHasher, FakeTokenService, InMemoryUserRepository } from '../helpers/fakes';
-
-const configStub = (overrides: Record<string, unknown> = {}) =>
-  ({
-    getOrThrow: () => ({
-      jwtSecret: 'segredo-de-teste',
-      jwtExpiresIn: '1h',
-      google: { clientId: '', clientSecret: '', callbackUrl: '', enabled: false, ...overrides },
-    }),
-  }) as unknown as ConfigService;
+import {
+  buildSessionKit,
+  configStub,
+  FakePasswordHasher,
+  InMemoryUserRepository,
+} from '../helpers/fakes';
 
 describe('LocalPassportStrategy (adaptador)', () => {
   const buildStrategy = (users: InMemoryUserRepository) => {
     const authService = new AuthService(
       [new EmailPasswordAuthStrategy(users, new FakePasswordHasher())],
-      new FakeTokenService(),
+      buildSessionKit(users).service,
     );
     return new LocalPassportStrategy(authService);
   };
@@ -50,14 +40,28 @@ describe('LocalPassportStrategy (adaptador)', () => {
 });
 
 describe('JwtPassportStrategy (adaptador)', () => {
-  it('reconstroi a identidade a partir do usuario no banco', async () => {
+  const setup = async (
+    users = new InMemoryUserRepository([InMemoryUserRepository.buildUser()]),
+  ) => {
+    const kit = buildSessionKit(users);
     const user = InMemoryUserRepository.buildUser();
-    const strategy = new JwtPassportStrategy(configStub(), new InMemoryUserRepository([user]));
+    await kit.service.start({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      provider: 'email',
+    });
+    return { kit, user, strategy: new JwtPassportStrategy(configStub(), users, kit.service) };
+  };
+
+  it('reconstroi a identidade a partir do usuario no banco e da sessao ativa', async () => {
+    const { strategy, user } = await setup();
 
     const identity = await strategy.validate({
       sub: user.id,
       email: user.email,
       provider: 'email',
+      sid: 'session-1',
     });
 
     expect(identity).toEqual({
@@ -65,41 +69,63 @@ describe('JwtPassportStrategy (adaptador)', () => {
       email: user.email,
       name: user.name,
       provider: 'email',
+      sessionId: 'session-1',
     });
   });
 
   it('rejeita token de usuario que nao existe mais', async () => {
-    const strategy = new JwtPassportStrategy(configStub(), new InMemoryUserRepository());
+    const { strategy } = await setup(new InMemoryUserRepository());
 
     await expect(
-      strategy.validate({ sub: 'apagado', email: 'x@example.com', provider: 'email' }),
+      strategy.validate({
+        sub: 'apagado',
+        email: 'x@example.com',
+        provider: 'email',
+        sid: 'session-1',
+      }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('rejeita token cuja sessao foi encerrada (logout real)', async () => {
+    const { strategy, kit, user } = await setup();
+    await kit.service.end('session-1', user.id);
+
+    await expect(
+      strategy.validate({ sub: user.id, email: user.email, provider: 'email', sid: 'session-1' }),
+    ).rejects.toThrow(/Sessao encerrada/);
+  });
+
+  it('rejeita token sem sessao ou com provider desconhecido', async () => {
+    const { strategy, user } = await setup();
+
+    await expect(
+      strategy.validate({ sub: user.id, email: user.email, provider: 'email', sid: '' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(
+      strategy.validate({ sub: user.id, email: user.email, provider: 'saml', sid: 'session-1' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('rejeita sessao de outro usuario', async () => {
+    const other = InMemoryUserRepository.buildUser({ id: 'user-2', email: 'outro@example.com' });
+    const users = new InMemoryUserRepository([InMemoryUserRepository.buildUser(), other]);
+    const { strategy } = await setup(users);
+
+    await expect(
+      strategy.validate({ sub: 'user-2', email: other.email, provider: 'email', sid: 'session-1' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('preserva o provider declarado no token', async () => {
-    const user = InMemoryUserRepository.buildUser({ googleId: 'google-1' });
-    const strategy = new JwtPassportStrategy(configStub(), new InMemoryUserRepository([user]));
+    const { strategy, user } = await setup();
 
     const identity = await strategy.validate({
       sub: user.id,
       email: user.email,
-      provider: 'google',
+      provider: 'guest',
+      sid: 'session-1',
     });
 
-    expect(identity.provider).toBe('google');
-  });
-});
-
-describe('GoogleAuthGuard', () => {
-  it('responde 503 quando o Google nao esta configurado', () => {
-    const guard = new GoogleAuthGuard(configStub({ enabled: false }));
-
-    expect(() => guard.canActivate({} as ExecutionContext)).toThrow(ServiceUnavailableException);
-  });
-
-  it('explica no erro qual variavel falta', () => {
-    const guard = new GoogleAuthGuard(configStub({ enabled: false }));
-
-    expect(() => guard.canActivate({} as ExecutionContext)).toThrow(/GOOGLE_CLIENT_ID/);
+    expect(identity.provider).toBe('guest');
   });
 });

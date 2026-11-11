@@ -1,5 +1,9 @@
 # Arquitetura
 
+> O POC de autenticação evoluiu para o backend completo do Sintetiza. As seções
+> sobre Strategies e Passport continuam válidas; os demais módulos repetem as
+> mesmas camadas. Regras de negócio e endpoints: [modules.md](modules.md).
+
 ## Objetivo
 
 Autenticar usuários por mais de um mecanismo, mantendo cada mecanismo isolado,
@@ -18,8 +22,8 @@ flowchart TD
     C["AuthController"] --> P["PrismaClient"]
     C --> A["argon2"]
     C --> J["JwtService"]
-    C --> IF{"if provider === 'google'"}
-    IF --> G["lógica do Google"]
+    C --> IF{"if provider === 'guest'"}
+    IF --> G["lógica do convidado"]
     IF --> E["lógica de e-mail"]
 ```
 
@@ -33,10 +37,10 @@ flowchart LR
     HTTP["HTTP / AuthController"] --> AUTH["AuthService"]
     AUTH --> STRATEGY["AuthStrategy<br/><i>(contrato)</i>"]
     STRATEGY --> EMAIL["EmailPasswordAuthStrategy"]
-    STRATEGY --> GOOGLE["GoogleAuthStrategy"]
+    STRATEGY --> GUEST["GuestAuthStrategy"]
     EMAIL --> USERS["UserRepository<br/><i>(contrato)</i>"]
     EMAIL --> HASH["PasswordHasher<br/><i>(contrato)</i>"]
-    GOOGLE --> USERS
+    GUEST --> USERS
     AUTH --> TOKEN["TokenService<br/><i>(contrato)</i>"]
     USERS --> PRISMA["PrismaUserRepository"]
     HASH --> ARGON["Argon2PasswordHasher"]
@@ -85,46 +89,59 @@ flowchart RL
 
 ## Estrutura de pastas
 
+Cada módulo de negócio repete as mesmas quatro camadas; o módulo `auth` é o
+exemplo mais completo.
+
 ```
 src/
-├── main.ts                        bootstrap: pipes, filtros, Swagger
-├── app.module.ts
+├── main.ts                        bootstrap (CORS, pipes, filtro, Swagger)
+├── bootstrap.ts                   configuração HTTP comum ao main.ts e aos testes E2E
+├── app.module.ts                  módulos + middleware de request-id
 ├── swagger.ts                     serve o api.swagger.yaml em /docs
+├── config/                        configuração tipada (app, auth, ai, database) + validação de env
+├── database/                      PrismaService, TransactionManager (AsyncLocalStorage), erros do Prisma
+├── health/                        GET /health
+├── shared/
+│   ├── domain/                    datas de calendário/fuso, busca sem acentos, Clock
+│   ├── errors/                    erros de aplicação + filtro HTTP único
+│   ├── http/                      request-id/log de acesso, validação (pipe, decorators)
+│   └── pagination.ts              DTO e envelope { data, meta }
 │
-├── config/                        configuração tipada + validação de env
-│
-├── modules/
-│   ├── auth/
-│   │   ├── domain/
-│   │   │   ├── entities/auth-session.ts       AuthIdentity, AuthSession
-│   │   │   └── contracts/
-│   │   │       ├── auth-strategy.ts           ← a abstração central
-│   │   │       ├── password-hasher.ts
-│   │   │       └── token-service.ts
-│   │   ├── application/
-│   │   │   ├── auth.service.ts                orquestra o caso de uso
-│   │   │   └── strategies/
-│   │   │       ├── email-password-auth.strategy.ts
-│   │   │       └── google-auth.strategy.ts
-│   │   ├── presentation/
-│   │   │   ├── auth.controller.ts
-│   │   │   ├── current-user.decorator.ts
-│   │   │   └── dto/login.dto.ts
-│   │   └── infrastructure/
-│   │       ├── auth.module.ts                 ← onde contrato encontra detalhe
-│   │       ├── passport/                      adaptadores do Passport
-│   │       ├── guards/
-│   │       └── security/                      Argon2, JWT
-│   │
-│   └── users/
-│       ├── domain/
-│       │   ├── entities/user.ts
-│       │   └── contracts/user.repository.ts
-│       ├── infrastructure/prisma-user.repository.ts
-│       └── users.module.ts
-│
-├── database/                      PrismaService e PrismaModule
-└── shared/errors/                 erros de aplicação + filtro HTTP
+└── modules/
+    ├── auth/                      cadastro, login, convidado, sessões, recuperação, manutenção
+    │   ├── domain/                contratos: AuthStrategy, TokenService, SessionRepository,
+    │   │                          SecureTokenGenerator, PasswordReset*, PasswordHasher
+    │   ├── application/           AuthService, SessionService, RegistrationService,
+    │   │                          PasswordResetService, AuthMaintenanceService, strategies/
+    │   ├── presentation/          AuthController, DTOs, @CurrentUser
+    │   └── infrastructure/        auth.module, passport/, guards/, security/, persistence/,
+    │                              notifications/, jobs/
+    ├── users/                     User, UserRepository, AccountService, AccountController
+    ├── settings/                  preferências, "hoje" do usuário
+    ├── spaces/                    espaços e contadores
+    ├── tasks/                     regras de campos, ordenação, períodos, TasksService
+    ├── conversations/             parser do WhatsApp, estatísticas, importação
+    ├── chat/                      prompt e validação das propostas (domínio), ChatService,
+    │                              ProposalsService, OpenRouterProvider, SSE
+    ├── notifications/             notificações (polling) e lembrete diário sob demanda
+    └── audit/                     AuditService (global) e GET /account/activity
+```
+
+Dependências entre módulos (sempre por serviços exportados, nunca por
+repositórios de outro módulo):
+
+```mermaid
+flowchart LR
+    CHAT["chat"] --> TASKS["tasks"]
+    CHAT --> CONV["conversations"]
+    CHAT --> SPACES["spaces"]
+    CHAT --> SETTINGS["settings"]
+    TASKS --> SPACES
+    TASKS --> SETTINGS
+    NOTIF["notifications"] --> TASKS
+    NOTIF --> SETTINGS
+    AUTH["auth"] --> USERS["users"]
+    AUDIT["audit (global)"]
 ```
 
 ## O papel do Passport
@@ -136,7 +153,7 @@ desmonta o exercício inteiro:
 | - | ------------------------ | ----------------------------------- |
 | Onde | `application/strategies/` | `infrastructure/passport/` |
 | Responde | "quem é este usuário?" | "como extrair credenciais da request?" |
-| Exemplos | `EmailPasswordAuthStrategy`, `GoogleAuthStrategy` | `LocalPassportStrategy`, `JwtPassportStrategy`, `GooglePassportStrategy` |
+| Exemplos | `EmailPasswordAuthStrategy`, `GuestAuthStrategy` | `LocalPassportStrategy`, `JwtPassportStrategy` |
 | Testável | com fakes, sem framework | precisa do Passport |
 
 O Passport é um **adaptador**. `LocalPassportStrategy` não decide nada: extrai
@@ -160,8 +177,8 @@ Esta é a pergunta central do exercício. A resposta está em
 ```ts
 const authStrategiesProvider: Provider = {
   provide: AUTH_STRATEGIES,
-  useFactory: (email, google) => [email, google],
-  inject: [EmailPasswordAuthStrategy, GoogleAuthStrategy],
+  useFactory: (email, guest) => [email, guest],
+  inject: [EmailPasswordAuthStrategy, GuestAuthStrategy],
 };
 ```
 
@@ -172,31 +189,65 @@ no construtor. Escolher a Strategy vira uma consulta:
 const strategy = this.registry.get(provider);
 ```
 
-Registrar um terceiro provedor amanhã = criar uma classe e acrescentar uma
+Registrar um novo provedor amanhã = criar uma classe e acrescentar uma
 linha ao array. `AuthService`, `AuthController` e as Strategies existentes não
 mudam.
 
 ## Tratamento de erros
 
-O núcleo lança erros de aplicação (`InvalidCredentialsError`,
-`AuthenticationProviderError`, `UnsupportedAuthProviderError`), que não sabem o
-que é HTTP. `ApplicationErrorFilter`, registrado no `main.ts`, é o único ponto
-que traduz:
+O núcleo lança erros de aplicação, que não sabem o que é HTTP.
+`ApplicationErrorFilter` é o único ponto que traduz — inclusive os erros do
+próprio Nest (validação de DTO, rota inexistente) e erros inesperados (que
+viram `500` genérico, com a pilha só no log):
 
 | Erro do núcleo | HTTP |
 | -------------- | ---- |
-| `InvalidCredentialsError` | 401 |
-| `AuthenticationProviderError` | 502 |
-| `UnsupportedAuthProviderError` | 400 |
-| qualquer outro `ApplicationError` | 500 |
+| `ValidationError`, `UnsupportedAuthProviderError` | 400 |
+| `InvalidCredentialsError`, `SessionExpiredError` | 401 |
+| `ForbiddenError` | 403 |
+| `NotFoundError` | 404 |
+| `ConflictError` | 409 |
+| `PayloadTooLargeError` | 413 |
+| `UpstreamServiceError` | 502 |
+| `ServiceUnavailableError` | 503 |
+| qualquer outro | 500 |
+
+Formato único:
+
+```json
+{
+  "statusCode": 409,
+  "error": "ConflictError",
+  "message": "Ja existe um espaco com esse nome.",
+  "field": "name",
+  "path": "/spaces",
+  "timestamp": "2026-10-14T12:00:00.000Z",
+  "requestId": "7c1f6a8e-..."
+}
+```
+
+Erros de DTO trazem `error: "ValidationError"`, `details` (todas as mensagens)
+e `field` (o primeiro campo inválido, inclusive aninhado:
+`dailyReminder.time`). No streaming do chat, um erro depois do início vira o
+evento SSE `error` com o mesmo corpo.
+
+## Autorização
+
+Toda rota de recurso usa `JwtAuthGuard`. Os serviços sempre consultam com o
+`userId` do token; recurso de outro usuário responde `404` (não `403`), para
+não revelar que existe. Convidados têm as mesmas permissões sobre os próprios
+dados, exceto editar o perfil.
 
 ## Decisões conscientes
 
 | Decisão | Motivo |
 | ------- | ------ |
-| Sem refresh token | Escopo. Ver [authentication-flow.md](authentication-flow.md). |
-| Logout sem blacklist | Exigiria estado distribuído sem ganho didático. |
-| `passwordHash` opcional | Usuário criado só via Google não tem senha local. |
+| Sessão no banco + refresh rotativo | "Sair" e trocar a senha precisam invalidar tokens; ver [authentication-flow.md](authentication-flow.md). |
+| `passwordHash`, `email` e `username` opcionais | Convidado não tem senha, e-mail nem username. |
+| Transação por `AsyncLocalStorage` | Casos de uso declaram atomicidade sem conhecer o Prisma; repositórios participam sem parâmetro extra. |
+| Contexto da IA montado no servidor | O protótipo enviava conversa e tarefas do navegador; aqui o servidor lê do banco, valida e nunca expõe a chave. |
+| Provedor de IA atrás de `AiProvider` | Os testes usam um roteiro determinístico; trocar de modelo/endpoint não toca no chat. |
+| Busca de texto em memória (por usuário) | SQLite não ignora acentos; filtros estruturados (status, período, espaço) vão ao banco e só a busca textual roda na aplicação. Para volumes grandes, ver pendências no README. |
+| Lembrete sob demanda, sem job | O app já consulta `GET /notifications` periodicamente; a consulta gera o lembrete vencido com reserva atômica do dia. Só a limpeza de autenticação usa job (`JOBS_ENABLED`). |
 | Swagger em arquivo único | Ver [README.md](README.md). |
-| Sem cadastro de usuário | O seed cobre a necessidade de testar login. |
-| SQLite | Zero configuração; o repositório esconde a escolha. |
+| SQLite | Zero configuração; os repositórios escondem a escolha. |

@@ -12,9 +12,9 @@ flowchart TD
 
 | Nível | O que valida | O que é real | O que é fake |
 | ----- | ------------ | ------------ | ------------ |
-| Unitário | regras de autenticação | a classe sob teste | repositório, hasher, token |
+| Unitário | regras de domínio e casos de uso | a classe sob teste | repositórios, hasher, tokens, relógio, IA |
 | Integração | schema, constraints, mapeamento | Prisma + SQLite | nada |
-| E2E | contrato HTTP completo | tudo | nada |
+| E2E | contrato HTTP completo | tudo, inclusive migrations | só o modelo de linguagem (roteiro) |
 
 ## Comandos
 
@@ -34,6 +34,9 @@ npm run test:watch         # unitários em watch mode
 - `InMemoryUserRepository` implementa `UserRepository` com um `Map`
 - `FakePasswordHasher` usa `hashed:<senha>`, previsível e instantâneo
 - `FakeTokenService` devolve `token-for:<userId>` e registra as chamadas
+- `InMemorySessionRepository`, `InMemoryPasswordResetRepository`, `InMemoryAuditRepository`,
+  `FakeSecureTokenGenerator`, `FixedClock` e `ImmediateTransactionManager`
+- `buildSessionKit()` monta um `SessionService` completo sobre esses fakes
 
 Esses fakes são implementações honestas dos contratos, não `jest.mock()` sobre
 módulos. É o Dependency Inversion pagando dividendo: as regras podem rodar sem
@@ -50,9 +53,9 @@ banco porque nunca dependeram de banco.
 - **Nada no E2E.** A aplicação sobe com os mesmos pipes e filtros do
   `main.ts`.
 
-**A única fronteira substituída:** os servidores do Google. Nenhum teste faz
-chamada de rede para o OAuth. `GoogleAuthStrategy` é testada com perfis já
-normalizados, que é exatamente o que o adaptador do Passport entregaria.
+**A única fronteira substituída:** o modelo de linguagem. O
+`OpenRouterProvider` é testado com um `fetch` injetado que devolve streams SSE
+reais; os E2E usam o `ScriptedAiProvider`.
 
 ## Banco de teste
 
@@ -69,7 +72,7 @@ das suítes de integração e E2E:
 ```
 apaga prisma/test.db
         ↓
-prisma db push  (recria o schema do zero num arquivo novo)
+prisma migrate deploy  (aplica as migrations versionadas num arquivo novo)
         ↓
 cada suíte limpa a tabela no beforeEach / cria seu próprio fixture
         ↓
@@ -82,14 +85,12 @@ herdam nada da rodada anterior nem do banco de desenvolvimento.
 Integração e E2E rodam com `maxWorkers: 1`. SQLite é um arquivo único, e suítes
 paralelas se atropelariam.
 
-> Por que `db push` e não `migrate deploy`: `db push` aplica o schema
-> diretamente, sem depender do histórico de migrations. Para o banco de teste,
-> que é recriado sempre, é mais rápido e mais determinístico. As migrations
-> continuam sendo a fonte de verdade para dev e produção.
+> Por que `migrate deploy` e não `db push`: o banco de teste nasce das
+> **mesmas migrations** de desenvolvimento e produção, então uma migration
+> quebrada ou divergente do schema falha a suíte.
 >
-> E por que o arquivo é apagado *antes* do `db push`, em vez de usar
-> `--force-reset`: assim a operação é sempre uma criação, nunca um reset
-> destrutivo. O banco de desenvolvimento não corre risco nem por engano.
+> E por que o arquivo é apagado antes: assim a operação é sempre uma criação,
+> nunca um reset destrutivo. O banco de desenvolvimento não corre risco.
 
 ## Cobertura
 
@@ -118,52 +119,48 @@ coverage/lcov-report/index.html
 
 ## Casos cobertos
 
-### Unitários
+Resultado da última execução (`npm run test:cov`): **24 suítes, 316 testes,
+todos passando**; cobertura global ≈ 98% de linhas e 87% de branches;
+`modules/auth/application/` em 100%.
 
-`EmailPasswordAuthStrategy` — autenticação correta · usuário inexistente ·
-senha incorreta · usuário sem senha local · normalização de e-mail · mensagem
-idêntica para os dois tipos de falha.
+### Unitários (`test/unit/`)
 
-`GoogleAuthStrategy` — usuário já vinculado · vínculo a conta local existente ·
-criação no primeiro acesso · perfil sem `displayName` · perfil sem `googleId` ·
-perfil sem e-mail.
+| Suíte | Cobre |
+| ----- | ----- |
+| `email-password-auth`, `passport-adapters` | Strategies e adaptadores do Passport; JWT rejeitado para usuário removido, sessão encerrada, `sid` ausente ou de outro usuário |
+| `auth.service`, `auth.controller` | registro de Strategies (email, guest), emissão de sessão, todas as rotas de auth sem HTTP |
+| `auth-application` | `SessionService` (rotação, reuso, expiração, revogação, limpeza), `RegistrationService`, `GuestAuthStrategy`, `PasswordResetService` (link devolvido com os dados, 404 para e-mail sem conta, uso único, expiração, substituição, corrida, conta removida), `AuthMaintenanceService` |
+| `account-and-dtos` | `AccountService` (conflitos, convidado, exclusão), `AuditService` (falha não derruba), validação de todos os DTOs e o `field` do pipe global |
+| `domain-rules` | datas e fusos, períodos (semana seg–dom), busca sem acentos, paginação, parser do WhatsApp (Android/iOS/BOM/continuações/datas US), estatísticas, regras de espaço e de tarefa, ordenações |
+| `assistant-prompt` | montagem do prompt (conversa como dado, truncamento, tarefas, espaços, data), validação das propostas da IA, descrição do histórico, sugestões |
+| `openrouter.provider` | streaming SSE fragmentado, chamadas de função, erros 401/402/429/5xx, conexão recusada/caída, chunk inválido, cancelamento |
+| `jobs-and-chat` | job de manutenção só com `JOBS_ENABLED`, sem sobreposição e resistente a falhas; lembrete diário sob demanda (horário no fuso, um por dia, fuso inválido); resposta interrompida salva com o trecho recebido |
+| `application-error.filter`, `config`, `env.validation`, `jwt-token.service`, `argon2-password-hasher`, `login.dto` | mapeamento de todos os erros, configuração e infraestrutura |
 
-`AuthService` — delega à Strategy certa · rejeita provider desconhecido ·
-recusa duas Strategies para o mesmo provider · emite sessão · **não emite token
-quando a autenticação falha**.
+### Integração (`test/integration/`, SQLite criado pelas migrations)
 
-`Argon2PasswordHasher` — formato argon2id · salt aleatório · senha correta ·
-senha incorreta · hash corrompido não derruba a requisição.
+Transação desfeita por inteiro em falha e transação aninhada · unicidade
+(username, e-mail, nome de espaço, impressão digital da conversa) traduzida em
+`ConflictError` · cascata ao excluir o usuário (8 tabelas) · `SET NULL` ao
+excluir espaço, conversa e tarefa · limpeza de convidados · contagens por
+espaço/status · escopo de prazo · substituição de propostas por `ref` no mesmo
+fio · resolução condicional · rotação condicional do refresh token · link de
+uso único · reserva atômica do lembrete (duas chamadas simultâneas, uma vence)
+· notificações · auditoria.
 
-`JwtTokenService` — token verificável · tradução `sub` → `subject` · token
-adulterado · token expirado.
+### E2E (`test/e2e/`, aplicação inteira via HTTP)
 
-Adaptadores — `LocalPassportStrategy` delega e propaga o erro sem traduzi-lo ·
-`JwtPassportStrategy` recusa token de usuário removido · `GoogleAuthGuard`
-responde 503 explicando qual variável falta.
+| Suíte | Fluxos |
+| ----- | ------ |
+| `auth` | login, `/auth/me`, logout revogando só a sessão do token, refresh com rotação e reuso negado |
+| `account-settings` | cadastro (normalização, validações, 409 com `field`), convidado (perfil 403, limpeza), recuperação de senha completa (sessões encerradas, uso único, link substituído, link e dados na resposta, 404 para e-mail sem conta), editar/excluir conta com cascata, atividade com `X-Request-Id`, configurações, notificações por polling (lembrete gerado na consulta, sem duplicar em consultas simultâneas; lida some da lista; read-all; 404 de outro usuário), `/health`, formato de erro |
+| `tasks-spaces` | isolamento entre usuários (404), CRUD, `spaceName`, validações, Hoje/Amanhã/Semana/Todas com contadores, busca, ordenações, paginação, resumo e atrasadas, espaços com "Sem espaço", busca, atalhos, renomear/excluir |
+| `conversations-chat` | importação (formatos, duplicada 200, .pdf/vazio/inválido 400, >10 MB 413), exemplo, histórico com busca por conteúdo, renomear, texto, excluir; chat JSON e SSE, IA não configurada 503, falha do provedor 502/evento `error`, tentar novamente, análise, sugestões; propostas criar/editar/concluir/reabrir/excluir, confirmar com edição, descartar, 409 em proposta resolvida, substituição por `ref`, confirmar todas, conversa excluída mantém tarefas |
 
-`ApplicationErrorFilter` e `validateEnvironment` — todos os mapeamentos e todas
-as regras de validação.
-
-### Integração
-
-`PrismaUserRepository` — busca por id, e-mail e `googleId` (com e sem
-resultado) · criação via Google sem senha local · vínculo preservando a senha
-existente · unicidade de e-mail · unicidade de `googleId` · mapeamento para a
-entidade de domínio.
-
-### E2E
-
-`POST /auth/login` — 200 com credenciais válidas · formato completo da resposta
-· hash nunca vaza · 401 com senha errada · 401 com usuário inexistente ·
-respostas idênticas nos dois casos · 400 para corpo vazio, e-mail inválido,
-senha curta e campo desconhecido · e-mail com maiúsculas e espaços.
-
-`GET /auth/me` — 401 sem token, com token inválido e com esquema errado · 200
-com token válido · 401 quando o usuário foi removido do banco.
-
-`POST /auth/logout` — 401 sem autenticação · 204 autenticado · **o token
-continua válido depois** (limitação documentada, não bug).
+O modelo de linguagem é a **única** dependência substituída nos E2E: o
+`ScriptedAiProvider` (em `test/helpers/`) devolve respostas roteirizadas e
+registra as requisições, o que permite verificar o prompt montado pelo
+servidor. Nenhum teste chama o OpenRouter.
 
 ## Definition of done
 

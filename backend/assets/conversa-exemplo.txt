@@ -1,0 +1,20 @@
+13/10/2026 09:00 - As mensagens desta conversa são exemplos fictícios.
+13/10/2026 09:05 - Thalia: Precisamos enviar o relatório hoje.
+13/10/2026 09:06 - Lucas: A reunião será amanhã às 10h.
+13/10/2026 09:08 - Thalia: O orçamento aprovado é de R$ 1.200 para o projeto.
+13/10/2026 09:10 - Lucas: Vou preparar a apresentação para a equipe.
+13/10/2026 09:12 - Marina: Posso revisar o relatório antes do envio. Me mandem até as 15h?
+13/10/2026 09:13 - Thalia: Combinado, Marina. Envio o rascunho até as 14h.
+13/10/2026 09:20 - Lucas: Alguém confirma a sala da reunião de amanhã?
+13/10/2026 09:22 - Marina: Reservei a sala 3 das 10h às 11h.
+13/10/2026 14:05 - Thalia: Rascunho do relatório enviado por e-mail.
+13/10/2026 15:40 - Marina: Revisei. Faltam os números de setembro na tabela 2.
+13/10/2026 16:10 - Thalia: Números incluídos. Relatório enviado ao cliente ✅
+14/10/2026 11:05 - Lucas: Resumo da reunião: o cliente aprovou o cronograma, mas pediu a entrega da fase 1 até 30/10.
+14/10/2026 11:07 - Lucas: Também precisamos mandar uma proposta para a fase 2 até sexta.
+14/10/2026 11:10 - Thalia: Fico com a proposta da fase 2.
+14/10/2026 11:12 - Marina: Eu atualizo o cronograma com a nova data da fase 1.
+14/10/2026 11:15 - Lucas: Atenção: o orçamento de R$ 1.200 não cobre a fase 2. Vamos precisar de aprovação extra.
+15/10/2026 09:30 - Marina: Cronograma atualizado e compartilhado na pasta do projeto.
+15/10/2026 09:45 - Thalia: Proposta da fase 2 em andamento, envio amanhã para revisão.
+15/10/2026 10:02 - Lucas: Ótimo. Vou pedir a aprovação do orçamento extra ao financeiro hoje.

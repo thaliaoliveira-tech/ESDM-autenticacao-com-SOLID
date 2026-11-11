@@ -1,19 +1,19 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AUTH_STRATEGIES, type AuthStrategy } from '../domain/contracts/auth-strategy';
-import { TOKEN_SERVICE, type TokenService } from '../domain/contracts/token-service';
 import type { AuthIdentity, AuthProvider, AuthSession } from '../domain/entities/auth-session';
 import { UnsupportedAuthProviderError } from '../../../shared/errors/application-error';
+import { SessionService } from './session.service';
 
 /**
  * Orquestra o caso de uso de autenticacao.
  *
  * Repare no que NAO existe aqui:
  *
- *     if (provider === 'google') { ... } else { ... }
+ *     if (provider === 'email') { ... } else { ... }
  *
  * A escolha da Strategy e uma consulta a um registro montado por injecao de
- * dependencia. Registrar uma terceira Strategy amanha nao muda esta classe --
- * e exatamente esse o criterio de sucesso do exercicio.
+ * dependencia. Registrar uma nova Strategy (o convidado, por exemplo) nao
+ * mudou esta classe -- e exatamente esse o criterio de sucesso do exercicio.
  */
 @Injectable()
 export class AuthService {
@@ -21,7 +21,7 @@ export class AuthService {
 
   constructor(
     @Inject(AUTH_STRATEGIES) strategies: readonly AuthStrategy<never>[],
-    @Inject(TOKEN_SERVICE) private readonly tokens: TokenService,
+    private readonly sessions: SessionService,
   ) {
     const registry = new Map<AuthProvider, AuthStrategy<unknown>>();
 
@@ -53,14 +53,7 @@ export class AuthService {
 
   /** Etapa 2: emitir a sessao para uma identidade ja confirmada. */
   async issueSession(identity: AuthIdentity): Promise<AuthSession> {
-    const accessToken = await this.tokens.generate(identity);
-
-    return {
-      accessToken,
-      tokenType: 'Bearer',
-      expiresIn: this.tokens.expiresIn,
-      user: identity,
-    };
+    return this.sessions.start(identity);
   }
 
   /**

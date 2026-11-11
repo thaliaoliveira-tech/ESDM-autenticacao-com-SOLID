@@ -46,6 +46,8 @@ describe('Autenticacao (E2E)', () => {
 
       expect(response.body).toEqual({
         accessToken: expect.any(String) as string,
+        refreshToken: expect.stringMatching(/^[a-f0-9]{64}$/) as string,
+        refreshTokenExpiresAt: expect.any(String) as string,
         tokenType: 'Bearer',
         expiresIn: expect.any(String) as string,
         user: {
@@ -87,7 +89,15 @@ describe('Autenticacao (E2E)', () => {
         .post('/auth/login')
         .send({ email: 'ninguem@example.com', password: 'Demo@123' });
 
-      expect(senhaErrada.body).toEqual(inexistente.body);
+      // timestamp e requestId variam por requisicao; o restante precisa ser identico.
+      const comparable = ({ statusCode, error, message }: Record<string, unknown>) => ({
+        statusCode,
+        error,
+        message,
+      });
+      expect(comparable(senhaErrada.body as Record<string, unknown>)).toEqual(
+        comparable(inexistente.body as Record<string, unknown>),
+      );
     });
 
     it('400 quando o corpo esta vazio', async () => {
@@ -195,7 +205,7 @@ describe('Autenticacao (E2E)', () => {
       expect(response.status).toBe(204);
     });
 
-    it('o token CONTINUA valido depois do logout (limitacao documentada do POC)', async () => {
+    it('o token deixa de valer depois do logout (sessao revogada)', async () => {
       const token = await validToken();
 
       await request(server).post('/auth/logout').set('Authorization', `Bearer ${token}`);
@@ -203,19 +213,66 @@ describe('Autenticacao (E2E)', () => {
         .get('/auth/me')
         .set('Authorization', `Bearer ${token}`);
 
-      // Nao e um bug: o JWT e stateless e nao ha blacklist neste POC.
-      // Ver docs/authentication-flow.md, secao "Logout".
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(401);
+    });
+
+    it('o logout encerra so a sessao do token: outras sessoes continuam', async () => {
+      const first = await validToken();
+      const second = await validToken();
+
+      await request(server).post('/auth/logout').set('Authorization', `Bearer ${first}`);
+
+      await request(server).get('/auth/me').set('Authorization', `Bearer ${second}`).expect(200);
     });
   });
 
-  describe('Google OAuth', () => {
-    it('503 quando GOOGLE_CLIENT_ID/SECRET nao estao configurados', async () => {
-      const response = await request(server).get('/auth/google');
+  describe('POST /auth/refresh', () => {
+    const loginSession = async () =>
+      (await login()).body as { accessToken: string; refreshToken: string };
 
-      // .env.test define credenciais fake, entao a rota tenta redirecionar;
-      // sem credenciais, o guard responde 503 com instrucao clara.
-      expect([302, 503]).toContain(response.status);
+    it('troca o refresh token por um novo par valido', async () => {
+      const session = await loginSession();
+
+      const response = await request(server)
+        .post('/auth/refresh')
+        .send({ refreshToken: session.refreshToken })
+        .expect(200);
+      const renewed = response.body as { accessToken: string; refreshToken: string };
+
+      expect(renewed.refreshToken).not.toBe(session.refreshToken);
+      await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${renewed.accessToken}`)
+        .expect(200);
+    });
+
+    it('rotacao: o refresh token antigo nao vale uma segunda vez', async () => {
+      const session = await loginSession();
+      await request(server).post('/auth/refresh').send({ refreshToken: session.refreshToken });
+
+      const reused = await request(server)
+        .post('/auth/refresh')
+        .send({ refreshToken: session.refreshToken });
+
+      expect(reused.status).toBe(401);
+      expect(reused.body).toMatchObject({ error: 'SessionExpiredError' });
+    });
+
+    it('401 depois do logout da sessao', async () => {
+      const session = await loginSession();
+      await request(server)
+        .post('/auth/logout')
+        .set('Authorization', `Bearer ${session.accessToken}`);
+
+      await request(server)
+        .post('/auth/refresh')
+        .send({ refreshToken: session.refreshToken })
+        .expect(401);
+    });
+
+    it('400 sem refreshToken e 401 com token malformado', async () => {
+      await request(server).post('/auth/refresh').send({}).expect(400);
+      await request(server).post('/auth/refresh').send({ refreshToken: 'abc' }).expect(401);
     });
   });
 });

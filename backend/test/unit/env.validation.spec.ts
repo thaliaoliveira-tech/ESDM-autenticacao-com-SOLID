@@ -31,6 +31,36 @@ describe('validateEnvironment', () => {
     expect(() => validateEnvironment({ ...valid, PORT: 'abc' })).toThrow(/PORT/);
   });
 
+  it('aceita inteiros e booleanos opcionais validos', () => {
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        REFRESH_TOKEN_TTL_DAYS: '30',
+        JOBS_ENABLED: 'false',
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejeita inteiro positivo invalido', () => {
+    expect(() => validateEnvironment({ ...valid, GUEST_RETENTION_DAYS: '0' })).toThrow(
+      /GUEST_RETENTION_DAYS/,
+    );
+  });
+
+  it('rejeita booleano invalido', () => {
+    expect(() => validateEnvironment({ ...valid, JOBS_ENABLED: 'sim' })).toThrow(/JOBS_ENABLED/);
+  });
+
+  it('rejeita o segredo de exemplo em producao', () => {
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        NODE_ENV: 'production',
+        JWT_SECRET: 'troque-este-segredo-em-producao',
+      }),
+    ).toThrow(/producao/);
+  });
+
   it('acumula todos os erros em uma unica mensagem', () => {
     expect(() => validateEnvironment({})).toThrow(/JWT_SECRET[\s\S]*DATABASE_URL/);
   });

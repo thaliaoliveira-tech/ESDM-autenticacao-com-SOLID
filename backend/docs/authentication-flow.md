@@ -44,7 +44,7 @@ um corpo malformado seria rejeitado pelo Passport como `401`, quando o correto
 | corpo ausente, e-mail inválido, senha curta, campo desconhecido | `400` |
 | e-mail não cadastrado | `401` |
 | senha incorreta | `401` |
-| usuário existe mas só tem conta Google | `401` |
+| usuário existe mas não tem senha local | `401` |
 
 ### Por que a mensagem de erro é sempre a mesma
 
@@ -75,7 +75,8 @@ sequenceDiagram
     JS->>UR: findById(claims.sub)
     UR-->>JS: User | null
     Note over JS: usuário removido → 401,<br/>mesmo com token válido
-    JS-->>CT: request.user = AuthIdentity
+    JS->>JS: sessao (sid) ativa? senao 401
+    JS-->>CT: request.user = AuthenticatedUser
     CT-->>C: 200 { userId, email, name, provider }
 ```
 
@@ -85,88 +86,73 @@ abriria a rota.
 
 ---
 
-## Login com Google
+## Cadastro — `POST /auth/register`
 
-```mermaid
-sequenceDiagram
-    participant C as Navegador
-    participant GG as GoogleAuthGuard
-    participant P as Passport Google
-    participant GS as GoogleAuthStrategy
-    participant UR as UserRepository
-    participant TS as TokenService
+Regras herdadas da tela de cadastro do protótipo:
 
-    C->>GG: GET /auth/google
-    GG->>GG: credenciais configuradas?
-    Note over GG: se não → 503 com instrução clara
-    GG-->>C: 302 para o consentimento do Google
-    C->>P: GET /auth/google/callback?code=...
-    P->>P: troca code por perfil
-    P->>GS: authenticate(GoogleProfile normalizado)
-    GS->>UR: findByGoogleId
-    alt já autenticou por Google antes
-        UR-->>GS: User
-    else existe conta local com o mesmo e-mail
-        GS->>UR: linkGoogleAccount(userId, googleId)
-        UR-->>GS: User vinculado
-    else primeiro acesso
-        GS->>UR: createFromGoogle(profile)
-        UR-->>GS: User novo, sem senha local
-    end
-    GS-->>TS: AuthIdentity
-    TS-->>C: 200 { accessToken, ... }
-```
+| Campo | Regra |
+| ----- | ----- |
+| `username` | 3 a 30 caracteres `a-z 0-9 . _`, normalizado para minúsculas, único |
+| `email` | válido, normalizado (aparado, minúsculas), único |
+| `password` | 8 a 128 caracteres |
+| `confirmPassword` | igual a `password` |
+| `name` | opcional; padrão = `username` |
 
-### Adaptação consciente em relação ao material da aula
-
-No exemplo do professor o cliente é Flutter, e o Google Sign-In basta: não há
-necessidade de um `TokenManager` próprio.
-
-Aqui o contexto é diferente. Quem precisa ser protegido são os endpoints
-**desta API**, então o backend emite o próprio JWT após confirmar a identidade
-no Google. O token do Google autentica *quem é a pessoa*; o JWT da API autoriza
-*o acesso a esta API*.
-
-### Três caminhos, uma decisão de produto
-
-O `else if` dentro de `GoogleAuthStrategy` não é o `if/else` que a arquitetura
-proíbe. Aquele seria sobre **qual provedor usar**; este é sobre **o estado da
-conta**, e vive dentro da Strategy a que pertence.
-
-Vincular por e-mail (caminho 2) é uma escolha: assume-se que o Google verificou
-o endereço. Se essa premissa não valesse, o vínculo automático permitiria tomar
-contas alheias.
+Duplicidade responde `409` com `field` (`username` ou `email`). A checagem
+prévia dá a mensagem certa; a constraint única do banco é a garantia final
+contra corridas e o repositório a traduz no mesmo `ConflictError`. O cadastro
+já devolve a sessão (o app entra direto em "Hoje").
 
 ---
 
-## JWT
+## Convidado — `POST /auth/guest`
 
-Payload no fio:
+"Continue como convidado" virou a **terceira Strategy** (`GuestAuthStrategy`):
+uma classe nova e uma linha no registro de `auth.module.ts`, sem tocar em
+`AuthService`, `AuthController` ou nas outras Strategies — o mesmo critério de
+Open/Closed do exercício original.
+
+Cada convidado ganha um usuário próprio (`isGuest = true`, sem e-mail e sem
+senha), com dados isolados como os de qualquer conta. Convidados **sem sessão
+ativa** há mais de `GUEST_RETENTION_DAYS` (30) são removidos pela manutenção
+agendada, junto com todos os dados. Convidados não editam o perfil (`403`).
+
+---
+
+## Sessões e tokens
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant API as AuthController
+    participant SS as SessionService
+    participant DB as sessions
+
+    C->>API: login / register / guest
+    API->>SS: start(identity)
+    SS->>DB: cria sessão (hash do refresh token, validade 30 dias)
+    SS-->>C: accessToken (JWT com sid) + refreshToken (opaco)
+    Note over C: access expira (JWT_EXPIRES_IN)
+    C->>API: POST /auth/refresh { refreshToken }
+    API->>SS: refresh
+    SS->>DB: troca o hash SE ainda for o atual (rotação)
+    SS-->>C: novo par; o refresh antigo deixa de valer
+```
+
+Payload do JWT:
 
 ```json
-{
-  "sub": "clx0000000000000000000000",
-  "email": "demo@example.com",
-  "provider": "email",
-  "iat": 1767225600,
-  "exp": 1767229200
-}
+{ "sub": "clx...", "email": "demo@example.com", "provider": "email", "sid": "cly...", "iat": 1767225600, "exp": 1767229200 }
 ```
 
-A tradução entre `sub` (JWT) e `subject` (aplicação) acontece dentro de
-[`JwtTokenService`](../src/modules/auth/infrastructure/security/jwt-token.service.ts),
-e só ali. O contrato `TokenService` não menciona a palavra "JWT" de propósito:
-JWT é a implementação escolhida, não o contrato.
-
-Configuração:
-
-```env
-JWT_SECRET=...
-JWT_EXPIRES_IN=1h
-```
-
-**Sem refresh token neste POC.** Quando o access token expira, é preciso fazer
-login de novo.
+- **Access token**: JWT curto (`JWT_EXPIRES_IN`, padrão 1h). O claim `sid`
+  aponta para a sessão; o guard confere a cada requisição que a sessão existe,
+  pertence ao usuário, não foi revogada e não expirou.
+- **Refresh token**: 32 bytes aleatórios (64 hex), opaco. O banco guarda só o
+  SHA-256. Cada uso gera um novo e invalida o anterior (rotação condicional:
+  duas requisições com o mesmo token não renovam duas vezes).
+- A tradução `sub`/`sid` ↔ `subject`/`sessionId` fica confinada em
+  [`JwtTokenService`](../src/modules/auth/infrastructure/security/jwt-token.service.ts).
 
 ---
 
@@ -176,25 +162,56 @@ login de novo.
 POST /auth/logout  →  204 No Content
 ```
 
-O endpoint exige autenticação e **não faz nada no servidor**.
+Revoga **a sessão do token**: o access token e o refresh token daquela sessão
+deixam de valer imediatamente; outras sessões (outros aparelhos) continuam.
+Os testes E2E `o token deixa de valer depois do logout` e `o logout encerra so
+a sessao do token` documentam o comportamento.
 
-> **Limitação intencional, e é importante saber explicá-la.**
-> O JWT é stateless. Não há blacklist, não há revogação. Depois do logout, o
-> token continua criptograficamente válido até `exp`. O contrato real é:
-> *o cliente deve descartar o access token*.
->
-> Há um teste E2E que documenta esse comportamento explicitamente —
-> `'o token CONTINUA valido depois do logout'` — para que ninguém o descubra
-> como se fosse um bug.
+> Esta era a limitação consciente do POC original (JWT stateless, sem
+> revogação). Com o app real — "Sair" precisa sair, e trocar a senha precisa
+> derrubar as sessões — a sessão passou a existir no banco. O custo é uma
+> consulta por requisição autenticada (por chave primária).
 
-Revogação de verdade exigiria uma destas rotas, todas fora do escopo:
+---
 
-| Abordagem | Custo |
-| --------- | ----- |
-| Blacklist de tokens | armazenamento compartilhado (Redis) e consulta a cada request |
-| Sessões no banco | o token deixa de ser stateless; consulta a cada request |
-| Access curto + refresh | dois tokens, rotação, endpoint novo, mais superfície |
+## Recuperação de senha
 
-Para um POC cujo objetivo é demonstrar SOLID no ponto de extensão da
-autenticação, qualquer uma delas adicionaria infraestrutura sem adicionar
-clareza.
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant API as AuthController
+    participant PR as PasswordResetService
+
+    C->>API: POST /auth/password/forgot { email }
+    API->>PR: request(email)
+    PR->>PR: conta existe? senão 404
+    PR->>PR: gera token, apaga links anteriores, grava hash (30 min)
+    API-->>C: 200 { resetToken, resetUrl, email, name, expiresAt, ... }
+    C->>API: POST /auth/password/reset { token, password, confirmPassword }
+    API->>PR: reset
+    PR->>PR: valida (formato, existe, não usado, não expirado), marca usado
+    PR->>PR: troca o hash da senha e revoga TODAS as sessões
+    API-->>C: 204
+```
+
+- Uso único, validade `PASSWORD_RESET_TTL_MINUTES` (30); gerar outro link
+  invalida o anterior.
+- **Entrega**: não há envio de e-mail no projeto (o protótipo também não
+  enviava). O link de redefinição e os dados da solicitação voltam **sempre**
+  na própria resposta de `POST /auth/password/forgot`, em qualquer ambiente:
+  é a única forma de entrega. `resetUrl` é `PASSWORD_RESET_URL` + token.
+- Como o link vai na resposta, não há o que esconder: e-mail sem conta
+  responde `404` (o login continua com a mensagem única de credenciais).
+- Uma conta sem senha local pode usar o fluxo para definir uma.
+
+---
+
+## Manutenção agendada
+
+`AuthMaintenanceJob` roda de hora em hora (e na subida), se `JOBS_ENABLED`:
+
+| Limpeza | Critério |
+| ------- | -------- |
+| Sessões | expiradas ou revogadas há mais de 7 dias |
+| Links de redefinição | expirados ou já usados |
+| Convidados | sem sessão ativa e criados há mais de `GUEST_RETENTION_DAYS` |

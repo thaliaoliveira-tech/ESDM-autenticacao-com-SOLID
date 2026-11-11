@@ -1,15 +1,16 @@
 # Documentação
 
-Índice da documentação do POC de autenticação.
+Índice da documentação do backend do Sintetiza.
 
 | # | Documento | O que responde |
 | - | --------- | -------------- |
-| 1 | [architecture.md](architecture.md) | Como o projeto está organizado e por quê |
-| 2 | [solid.md](solid.md) | Qual classe demonstra cada princípio SOLID |
-| 3 | [authentication-flow.md](authentication-flow.md) | Como o login, o JWT e o logout funcionam |
-| 4 | [database.md](database.md) | Modelo de dados, migrations e seed |
-| 5 | [testing.md](testing.md) | Pirâmide de testes, mocks, cobertura |
-| 6 | [swagger/api.swagger.yaml](swagger/api.swagger.yaml) | Contrato da API (fonte oficial) |
+| 1 | [modules.md](modules.md) | Módulos, regras de negócio e cada tela do protótipo → endpoint |
+| 2 | [architecture.md](architecture.md) | Como o projeto está organizado e por quê |
+| 3 | [solid.md](solid.md) | Qual classe demonstra cada princípio SOLID |
+| 4 | [authentication-flow.md](authentication-flow.md) | Cadastro, login, convidado, sessões, refresh, logout e recuperação de senha |
+| 5 | [database.md](database.md) | Modelo de dados, relacionamentos, índices, migrations, seed e transações |
+| 6 | [testing.md](testing.md) | Pirâmide de testes, mocks, cobertura |
+| 7 | [swagger/api.swagger.yaml](swagger/api.swagger.yaml) | Contrato da API (fonte oficial) |
 
 ---
 
