@@ -1,614 +1,512 @@
-import React, { useState } from "react";
+import { useMemo, useState } from "react";
 import {
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  View,
-  TouchableOpacity,
   TextInput,
+  View,
   useColorScheme,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { Calendar, Check, Folder, Search, X } from "lucide-react-native";
 import {
-  CircleCheck,
-  TriangleAlert,
-  Search,
-  Briefcase,
-  GraduationCap,
-  Calendar,
-  Check,
-  Sparkles,
-  Plus,
-  Folder,
-} from "lucide-react-native";
+  type PeriodoFiltro,
+  type PrioridadeTarefa,
+  type StatusFiltro,
+  type TarefaItem,
+  useTarefas,
+} from "../../data/tarefasStore";
 
-interface TarefaItem {
-  id: string;
-  titulo: string;
-  prazoTexto: string;
-  prazoGrupo: "Hoje" | "Amanhã" | "Próximas";
-  espaco: string;
-  icone: any;
-  corStatus: string;
-  concluida: boolean;
-}
-
-const TAREFAS_INICIAIS: TarefaItem[] = [
-  {
-    id: "1",
-    titulo: "Enviar dados cadastrais do projeto",
-    prazoTexto: "Hoje",
-    prazoGrupo: "Hoje",
-    espaco: "Trabalho",
-    icone: Briefcase,
-    corStatus: "#EF4444",
-    concluida: false,
-  },
-  {
-    id: "2",
-    titulo: "Confirmar presença na reunião da Sprint",
-    prazoTexto: "Hoje",
-    prazoGrupo: "Hoje",
-    espaco: "Trabalho",
-    icone: Briefcase,
-    corStatus: "#EF4444",
-    concluida: false,
-  },
-  {
-    id: "3",
-    titulo: "Entregar trabalho de ESDM no portal",
-    prazoTexto: "Amanhã",
-    prazoGrupo: "Amanhã",
-    espaco: "Faculdade",
-    icone: GraduationCap,
-    corStatus: "#F59E0B",
-    concluida: false,
-  },
-  {
-    id: "4",
-    titulo: "Revisar anotações da aula de SOLID",
-    prazoTexto: "Amanhã",
-    prazoGrupo: "Amanhã",
-    espaco: "Faculdade",
-    icone: GraduationCap,
-    corStatus: "#F59E0B",
-    concluida: false,
-  },
-  {
-    id: "5",
-    titulo: "Estudar instalação do ambiente Docker",
-    prazoTexto: "25/09",
-    prazoGrupo: "Próximas",
-    espaco: "Trabalho",
-    icone: Briefcase,
-    corStatus: "#10B981",
-    concluida: false,
-  },
-  {
-    id: "6",
-    titulo: "Preparar apresentação dos slides de ESDM",
-    prazoTexto: "28/09",
-    prazoGrupo: "Próximas",
-    espaco: "Faculdade",
-    icone: GraduationCap,
-    corStatus: "#10B981",
-    concluida: true,
-  },
-  {
-    id: "7",
-    titulo: "Configurar banco de dados SQLite local",
-    prazoTexto: "29/09",
-    prazoGrupo: "Próximas",
-    espaco: "Trabalho",
-    icone: Briefcase,
-    corStatus: "#10B981",
-    concluida: true,
-  },
-];
+const PERIODOS: PeriodoFiltro[] = ["Hoje", "Amanhã", "Esta semana", "Todas"];
+const STATUS_OPCOES: StatusFiltro[] = ["Pendentes", "Concluídas", "Todas"];
 
 export default function TarefasScreen() {
-  const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-
-  const [tarefas, setTarefas] = useState<TarefaItem[]>(TAREFAS_INICIAIS);
+  const isDark = useColorScheme() === "dark";
+  const { tarefas, toggleConcluida } = useTarefas();
+  const [periodoAtivo, setPeriodoAtivo] = useState<PeriodoFiltro>("Hoje");
+  const [statusAtivo, setStatusAtivo] = useState<StatusFiltro>("Pendentes");
   const [busca, setBusca] = useState("");
-  const [abaAtiva, setAbaAtiva] = useState<"Todas" | "Hoje" | "Amanhã" | "Próximas">("Todas");
 
   const theme = {
-    bg: isDark ? "#090D16" : "#F8FAFC",
-    cardBg: isDark ? "#141C2E" : "#FFFFFF",
-    cardBorder: isDark ? "#1E293B" : "#F1F5F9",
-    textPrimary: isDark ? "#F8FAFC" : "#0F172A",
-    textSecondary: isDark ? "#94A3B8" : "#64748B",
-    primary: "#1D64ED",
-    inputBg: isDark ? "#0F172A" : "#EFF6FF",
-    inputBorder: isDark ? "#1E3A8A" : "#DBEAFE",
-    divider: isDark ? "#1E293B" : "#F1F5F9",
-    chipActiveBg: "#1D64ED",
-    chipActiveText: "#FFFFFF",
-    chipInactiveBg: isDark ? "#141C2E" : "#FFFFFF",
-    chipInactiveText: isDark ? "#94A3B8" : "#64748B",
+    bg: isDark ? "#101b2b" : "#f5f9fe",
+    cardBg: isDark ? "#18263b" : "#ffffff",
+    cardBorder: isDark ? "#2c3c54" : "#e6edf5",
+    highlight: isDark ? "#203c5f" : "#e5f0ff",
+    textPrimary: isDark ? "#e6effc" : "#152748",
+    textSecondary: isDark ? "#a6b5ca" : "#7b889a",
+    accent: isDark ? "#60a5fa" : "#1d64ed",
+    primary: "#1d64ed",
+    inputBorder: isDark ? "#2c3c54" : "#cbdce9",
+    checkboxBorder: isDark ? "#3b5272" : "#cbdce9",
+    success: "#16805b",
   };
 
-  const toggleConcluida = (id: string) => {
-    setTarefas((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, concluida: !t.concluida } : t))
-    );
+  const tarefasDoPeriodo = useMemo(() => {
+    if (periodoAtivo === "Todas") return tarefas;
+    return tarefas.filter((item) => item.prazoGrupo === periodoAtivo);
+  }, [tarefas, periodoAtivo]);
+
+  const totalParaFazer = useMemo(
+    () => tarefasDoPeriodo.filter((item) => !item.concluida).length,
+    [tarefasDoPeriodo]
+  );
+
+  const totalConcluidas = useMemo(
+    () => tarefasDoPeriodo.filter((item) => item.concluida).length,
+    [tarefasDoPeriodo]
+  );
+
+  const tarefasFiltradas = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+
+    return tarefasDoPeriodo.filter((item) => {
+      if (termo) {
+        const matchTitulo = item.titulo.toLowerCase().includes(termo);
+        const matchEspaco = item.espaco.toLowerCase().includes(termo);
+        if (!matchTitulo && !matchEspaco) return false;
+      }
+
+      if (statusAtivo === "Pendentes") return !item.concluida;
+      if (statusAtivo === "Concluídas") return item.concluida;
+      return true;
+    });
+  }, [tarefasDoPeriodo, statusAtivo, busca]);
+
+  const getPrioridadeColor = (prioridade: PrioridadeTarefa) => {
+    if (prioridade === "Alta") return "#ef5060";
+    if (prioridade === "Média") return "#f6cd3c";
+    return "#087cfa";
   };
 
-  const totalPendentes = tarefas.filter((t) => !t.concluida).length;
-  const totalConcluidas = tarefas.filter((t) => t.concluida).length;
+  const getEmptyMessage = () => {
+    if (busca.trim().length > 0) {
+      return "Nenhuma tarefa encontrada neste filtro. Tente outro termo.";
+    }
+    if (periodoAtivo === "Hoje") {
+      return "Nenhuma tarefa para hoje neste filtro.";
+    }
+    if (periodoAtivo === "Amanhã") {
+      return "Nenhuma tarefa para amanhã neste filtro.";
+    }
+    if (periodoAtivo === "Esta semana") {
+      return "Nenhuma tarefa para esta semana neste filtro.";
+    }
+    return "Nenhuma tarefa neste filtro.";
+  };
 
-  const tarefasFiltradas = tarefas.filter((item) => {
-    const matchAba = abaAtiva === "Todas" || item.prazoGrupo === abaAtiva;
-    const matchBusca =
-      busca.trim() === "" ||
-      item.titulo.toLowerCase().includes(busca.toLowerCase()) ||
-      item.espaco.toLowerCase().includes(busca.toLowerCase());
-    return matchAba && matchBusca;
-  });
+  const statusContagem = (status: StatusFiltro) => {
+    if (status === "Pendentes") return totalParaFazer;
+    if (status === "Concluídas") return totalConcluidas;
+    return tarefasDoPeriodo.length;
+  };
+
+  const mostrarControlesLista =
+    tarefasDoPeriodo.length > 0 || busca.trim().length > 0;
 
   return (
-    <SafeAreaView edges={["top"]} style={[styles.safeArea, { backgroundColor: theme.bg }]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* 1. Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.greetingTitle, { color: theme.textPrimary }]}>
-              Tarefas
-            </Text>
-            <Text style={[styles.greetingSubtitle, { color: theme.textSecondary }]}>
-              Ações extraídas diretamente das suas conversas
-            </Text>
-          </View>
-        </View>
+        {/* Cabeçalho */}
+        <Text style={[styles.heading, { color: theme.textPrimary }]}>Tarefas</Text>
+        <Text style={[styles.headingSubtitle, { color: theme.textSecondary }]}>
+          O que você precisa fazer hoje?
+        </Text>
 
-        {/* 2. Barra de Busca */}
-        <View
-          style={[
-            styles.searchBar,
-            {
-              backgroundColor: theme.inputBg,
-              borderColor: theme.inputBorder,
-            },
-          ]}
-        >
-          <Search size={20} color={theme.primary} style={styles.searchIcon} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.primary }]}
-            placeholder="Buscar tarefas ou pendências..."
-            placeholderTextColor={isDark ? "#60A5FA" : "#2563EB"}
-            value={busca}
-            onChangeText={setBusca}
-          />
-        </View>
-
-        {/* 3. Card Destaque: Ação IA */}
-        <TouchableOpacity
-          style={styles.actionCard}
-          activeOpacity={0.88}
-          onPress={() => router.push("/(tabs)")}
-        >
-          <View style={styles.actionCardLeft}>
-            <View style={styles.iconBadge}>
-              <Sparkles size={24} color="#FFFFFF" />
-            </View>
-            <View style={styles.actionCardTextContainer}>
-              <Text style={styles.actionCardTitle}>Extrair mais tarefas</Text>
-              <Text style={styles.actionCardSubtitle}>
-                Importe uma conversa para a IA mapear novos prazos
-              </Text>
-            </View>
-          </View>
-          <View style={styles.actionCardButton}>
-            <Plus size={20} color="#1D64ED" strokeWidth={2.8} />
-          </View>
-        </TouchableOpacity>
-
-        {/* 4. Resumo de Métricas */}
-        <View
-          style={[
-            styles.overviewCard,
-            {
-              backgroundColor: theme.cardBg,
-              borderColor: theme.cardBorder,
-            },
-          ]}
-        >
-          <View style={styles.overviewItem}>
-            <Calendar size={20} color={theme.primary} />
-            <Text style={[styles.overviewNumber, { color: theme.textPrimary }]}>
-              {tarefas.length}
+        {/* Cards de resumo lado a lado */}
+        <View style={styles.overviewRow}>
+          <View
+            style={[
+              styles.overviewCard,
+              { backgroundColor: theme.cardBg, borderColor: theme.cardBorder },
+            ]}
+          >
+            <Text style={[styles.overviewNumber, { color: theme.accent }]}>
+              {totalParaFazer}
             </Text>
             <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>
-              Total
+              para fazer
             </Text>
           </View>
 
-          <View style={[styles.overviewDivider, { backgroundColor: theme.divider }]} />
-
-          <View style={styles.overviewItem}>
-            <TriangleAlert size={20} color="#F59E0B" />
-            <Text style={[styles.overviewNumber, { color: "#F59E0B" }]}>
-              {totalPendentes}
-            </Text>
-            <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>
-              Pendentes
-            </Text>
-          </View>
-
-          <View style={[styles.overviewDivider, { backgroundColor: theme.divider }]} />
-
-          <View style={styles.overviewItem}>
-            <CircleCheck size={20} color="#10B981" />
-            <Text style={[styles.overviewNumber, { color: "#10B981" }]}>
+          <View
+            style={[
+              styles.overviewCard,
+              { backgroundColor: theme.cardBg, borderColor: theme.cardBorder },
+            ]}
+          >
+            <Text style={[styles.overviewNumber, { color: theme.accent }]}>
               {totalConcluidas}
             </Text>
             <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>
-              Concluídas
+              concluídas
             </Text>
           </View>
         </View>
 
-        {/* 5. Filtros por Prazo */}
-        <View style={styles.filterRow}>
-          {(["Todas", "Hoje", "Amanhã", "Próximas"] as const).map((aba) => {
-            const ativo = abaAtiva === aba;
+        {/* Barra segmentada de períodos */}
+        <View style={[styles.segmentedTrack, { backgroundColor: theme.highlight }]}>
+          {PERIODOS.map((periodo) => {
+            const ativo = periodoAtivo === periodo;
             return (
-              <TouchableOpacity
-                key={aba}
-                onPress={() => setAbaAtiva(aba)}
+              <Pressable
+                key={periodo}
+                onPress={() => setPeriodoAtivo(periodo)}
                 style={[
-                  styles.filterChip,
-                  {
-                    backgroundColor: ativo
-                      ? theme.chipActiveBg
-                      : theme.chipInactiveBg,
-                    borderColor: ativo ? theme.chipActiveBg : theme.cardBorder,
-                  },
+                  styles.segmentButton,
+                  periodo === "Esta semana" && styles.segmentButtonWide,
+                  ativo && { backgroundColor: theme.cardBg },
                 ]}
-                activeOpacity={0.7}
               >
                 <Text
+                  numberOfLines={1}
                   style={[
-                    styles.filterChipText,
-                    {
-                      color: ativo
-                        ? theme.chipActiveText
-                        : theme.chipInactiveText,
-                      fontWeight: ativo ? "700" : "500",
-                    },
+                    styles.segmentText,
+                    { color: ativo ? theme.textPrimary : theme.textSecondary },
+                    ativo && styles.segmentTextActive,
                   ]}
                 >
-                  {aba}
+                  {periodo}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             );
           })}
         </View>
 
-        {/* 6. Lista de Tarefas Agrupadas */}
-        <View style={styles.section}>
-          <View
-            style={[
-              styles.tasksCard,
-              {
-                backgroundColor: theme.cardBg,
-                borderColor: theme.cardBorder,
-              },
-            ]}
-          >
-            {tarefasFiltradas.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-                  Nenhuma tarefa encontrada para este filtro.
-                </Text>
-              </View>
-            ) : (
-              tarefasFiltradas.map((tarefa, index) => {
-                const IconEspaco = tarefa.icone;
-                const isLast = index === tarefasFiltradas.length - 1;
+        {/* Busca e filtros de status quando há tarefas no período */}
+        {mostrarControlesLista ? (
+          <>
+            <View
+              style={[
+                styles.searchBox,
+                {
+                  backgroundColor: theme.cardBg,
+                  borderColor: theme.inputBorder,
+                },
+              ]}
+            >
+              <Search size={17} color={theme.textSecondary} />
+              <TextInput
+                value={busca}
+                onChangeText={setBusca}
+                placeholder="Buscar tarefas"
+                placeholderTextColor={theme.textSecondary}
+                style={[styles.searchInput, { color: theme.textPrimary }]}
+              />
+              {busca.length > 0 ? (
+                <Pressable onPress={() => setBusca("")} hitSlop={8}>
+                  <X size={17} color={theme.textSecondary} />
+                </Pressable>
+              ) : null}
+            </View>
 
+            <View style={styles.filterRow}>
+              {STATUS_OPCOES.map((status) => {
+                const ativo = statusAtivo === status;
                 return (
-                  <React.Fragment key={tarefa.id}>
-                    <View style={styles.taskItem}>
-                      {/* Checkbox interativo */}
-                      <TouchableOpacity
-                        onPress={() => toggleConcluida(tarefa.id)}
-                        activeOpacity={0.7}
-                        style={[
-                          styles.checkbox,
-                          tarefa.concluida && styles.checkboxConcluido,
-                          !tarefa.concluida && { borderColor: tarefa.corStatus },
-                        ]}
+                  <Pressable
+                    key={status}
+                    onPress={() => setStatusAtivo(status)}
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor: ativo ? theme.primary : theme.cardBg,
+                        borderColor: ativo ? theme.primary : theme.cardBorder,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        { color: ativo ? "#ffffff" : theme.textPrimary },
+                      ]}
+                    >
+                      {status}{" "}
+                      <Text
+                        style={{
+                          color: ativo ? "#d1e9ff" : theme.textSecondary,
+                        }}
                       >
-                        {tarefa.concluida && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
-                      </TouchableOpacity>
-
-                      {/* Informações da Tarefa */}
-                      <TouchableOpacity
-                        style={styles.taskContent}
-                        activeOpacity={0.7}
-                        onPress={() => toggleConcluida(tarefa.id)}
-                      >
-                        <Text
-                          style={[
-                            styles.taskTitle,
-                            { color: theme.textPrimary },
-                            tarefa.concluida && styles.taskTitleConcluida,
-                          ]}
-                        >
-                          {tarefa.titulo} —{" "}
-                          <Text style={styles.taskDueDate}>{tarefa.prazoTexto}</Text>
-                        </Text>
-
-                        <View style={styles.taskMeta}>
-                          <IconEspaco
-                            size={13}
-                            color={theme.textSecondary}
-                            style={styles.taskMetaIcon}
-                          />
-                          <Text style={[styles.taskMetaText, { color: theme.textSecondary }]}>
-                            {tarefa.espaco}
-                          </Text>
-                          {tarefa.concluida && (
-                            <View style={styles.concluidaBadge}>
-                              <Text style={styles.concluidaBadgeText}>Concluída</Text>
-                            </View>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    </View>
-
-                    {!isLast && (
-                      <View
-                        style={[styles.taskDivider, { backgroundColor: theme.divider }]}
-                      />
-                    )}
-                  </React.Fragment>
+                        {statusContagem(status)}
+                      </Text>
+                    </Text>
+                  </Pressable>
                 );
-              })
-            )}
+              })}
+            </View>
+          </>
+        ) : null}
+
+        {/* Lista de tarefas ou estado vazio */}
+        {tarefasFiltradas.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+              {getEmptyMessage()}
+            </Text>
           </View>
-        </View>
+        ) : (
+          <View style={styles.taskList}>
+            {tarefasFiltradas.map((item: TarefaItem) => (
+              <View
+                key={item.id}
+                style={[
+                  styles.taskCard,
+                  {
+                    backgroundColor: theme.cardBg,
+                    borderColor: theme.cardBorder,
+                  },
+                ]}
+              >
+                <Pressable
+                  onPress={() => toggleConcluida(item.id)}
+                  style={styles.taskMainPressable}
+                >
+                  <View
+                    style={[
+                      styles.priorityDot,
+                      { backgroundColor: getPrioridadeColor(item.prioridade) },
+                    ]}
+                  />
+                  <View style={styles.taskContent}>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.taskTitle,
+                        { color: item.concluida ? theme.textSecondary : theme.textPrimary },
+                        item.concluida && styles.taskTitleDone,
+                      ]}
+                    >
+                      {item.titulo}
+                    </Text>
+                    <View style={styles.taskMetaRow}>
+                      <Calendar size={12} color={theme.textSecondary} />
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.taskMetaText, { color: theme.textSecondary }]}
+                      >
+                        {item.prazoTexto}
+                      </Text>
+                    </View>
+                    <View style={styles.taskMetaRow}>
+                      <Folder size={12} color={theme.textSecondary} />
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.taskMetaText, { color: theme.textSecondary }]}
+                      >
+                        {item.espaco}
+                      </Text>
+                    </View>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => toggleConcluida(item.id)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: item.concluida }}
+                  style={styles.taskToggleBtn}
+                >
+                  <View
+                    style={[
+                      styles.taskCheckbox,
+                      {
+                        borderColor: item.concluida
+                          ? theme.success
+                          : theme.checkboxBorder,
+                        backgroundColor: item.concluida
+                          ? theme.success
+                          : "transparent",
+                      },
+                    ]}
+                  >
+                    {item.concluida ? (
+                      <Check size={12} color="#ffffff" strokeWidth={2.5} />
+                    ) : null}
+                  </View>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  safe: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 44,
+    paddingTop: 22,
+    paddingBottom: 120,
   },
-  header: {
-    marginBottom: 16,
-  },
-  greetingTitle: {
-    fontSize: 24,
+  heading: {
+    fontSize: 20,
     fontWeight: "700",
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
+    marginBottom: 4,
   },
-  greetingSubtitle: {
-    fontSize: 15,
-    marginTop: 4,
-    fontWeight: "400",
+  headingSubtitle: {
+    fontSize: 13.5,
+    lineHeight: 20,
+    marginBottom: 18,
   },
-  searchBar: {
+  overviewRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 18,
+  },
+  overviewCard: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    height: 52,
-    borderRadius: 16,
-    borderWidth: 1,
+    gap: 12,
     paddingHorizontal: 16,
-    marginBottom: 16,
+    paddingVertical: 15,
+    borderRadius: 14,
+    borderWidth: 1,
   },
-  searchIcon: {
-    marginRight: 10,
+  overviewNumber: {
+    fontSize: 27,
+    fontWeight: "700",
+    lineHeight: 30,
+  },
+  overviewLabel: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  segmentedTrack: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 14,
+    padding: 4,
+    gap: 2,
+    marginBottom: 20,
+  },
+  segmentButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  segmentButtonWide: {
+    flex: 1.35,
+  },
+  segmentText: {
+    fontSize: 12.5,
+    fontWeight: "500",
+  },
+  segmentTextActive: {
+    fontWeight: "700",
+  },
+  searchBox: {
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: "500",
+    fontSize: 14,
     paddingVertical: 0,
-  },
-  actionCard: {
-    backgroundColor: "#1D64ED",
-    borderRadius: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    shadowColor: "#1D64ED",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    elevation: 4,
-    marginBottom: 20,
-  },
-  actionCardLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  iconBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-  },
-  actionCardTextContainer: {
-    flex: 1,
-  },
-  actionCardTitle: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 3,
-  },
-  actionCardSubtitle: {
-    color: "rgba(255, 255, 255, 0.88)",
-    fontSize: 12.5,
-    lineHeight: 17,
-    fontWeight: "400",
-  },
-  actionCardButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  overviewCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-around",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 8,
-    elevation: 1,
-    marginBottom: 24,
-  },
-  overviewItem: {
-    alignItems: "center",
-    flex: 1,
-  },
-  overviewNumber: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginTop: 6,
-    marginBottom: 2,
-  },
-  overviewLabel: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  overviewDivider: {
-    width: 1,
-    height: 32,
   },
   filterRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   filterChip: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 14,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 18,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
   filterChipText: {
-    fontSize: 13,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  tasksCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  taskItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    paddingVertical: 14,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    marginTop: 2,
-    marginRight: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkboxConcluido: {
-    backgroundColor: "#10B981",
-    borderColor: "#10B981",
-  },
-  taskContent: {
-    flex: 1,
-  },
-  taskTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  taskTitleConcluida: {
-    textDecorationLine: "line-through",
-    opacity: 0.5,
-  },
-  taskDueDate: {
-    color: "#1D64ED",
-    fontWeight: "600",
-  },
-  taskMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  taskMetaIcon: {
-    marginRight: 5,
-  },
-  taskMetaText: {
-    fontSize: 12.5,
-    fontWeight: "400",
-  },
-  concluidaBadge: {
-    backgroundColor: "rgba(16, 185, 129, 0.12)",
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-    marginLeft: 8,
-  },
-  concluidaBadgeText: {
-    color: "#10B981",
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "700",
   },
-  taskDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: 36,
-  },
-  emptyContainer: {
-    paddingVertical: 28,
+  emptyWrap: {
+    paddingTop: 18,
+    paddingHorizontal: 12,
     alignItems: "center",
   },
   emptyText: {
     fontSize: 14,
+    textAlign: "center",
+    lineHeight: 21,
+  },
+  taskList: {
+    gap: 8,
+  },
+  taskCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 76,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingLeft: 12,
+    paddingRight: 4,
+  },
+  taskMainPressable: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingVertical: 12,
+  },
+  priorityDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    marginTop: 5,
+  },
+  taskContent: {
+    flex: 1,
+    gap: 2,
+  },
+  taskTitle: {
+    fontSize: 13.5,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginBottom: 1,
+  },
+  taskTitleDone: {
+    textDecorationLine: "line-through",
+  },
+  taskMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  taskMetaText: {
+    fontSize: 11.5,
+    lineHeight: 15,
+  },
+  taskToggleBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  taskCheckbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
-

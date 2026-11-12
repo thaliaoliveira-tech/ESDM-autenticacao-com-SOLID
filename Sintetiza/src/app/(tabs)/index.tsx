@@ -1,588 +1,533 @@
-import React, { useState } from "react";
+import { type ComponentRef, useEffect, useRef, useState } from "react";
 import {
+  ArrowUp,
+  Bot,
+  BookOpen,
+  FileText,
+  HelpCircle,
+  MessageSquare,
+  Plus,
+  Send,
+  Upload,
+} from "lucide-react-native";
+import {
+  Pressable,
+  SafeAreaView,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
-  View,
-  TouchableOpacity,
   TextInput,
+  View,
+  Animated,
   useColorScheme,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
-import Svg, { Path } from "react-native-svg";
-import {
-  Bell,
-  Sparkles,
-  Search,
-  Plus,
-  Folder,
-  CircleCheck,
-  TriangleAlert,
-  Briefcase,
-  GraduationCap,
-  ChevronRight,
-} from "lucide-react-native";
 
-// Ícone vetorial do WhatsApp estilizado
-function WhatsAppIcon({ size = 28, color = "#FFFFFF" }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.414-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.888 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L0 24l6.335-1.662c1.746.952 3.71 1.454 5.711 1.455h.005c6.554 0 11.89-5.335 11.893-11.893a11.82 11.82 0 00-3.48-8.413z"
-        fill={color}
-      />
-    </Svg>
-  );
-}
+export default function ConversasScreen() {
+  const isDark = useColorScheme() === "dark";
+  const [mensagem, setMensagem] = useState("");
+  const [mensagensEnviadas, setMensagensEnviadas] = useState<string[]>([]);
+  const [sidebarVisivel, setSidebarVisivel] = useState(false);
+  const sidebarTranslateX = useRef(new Animated.Value(380)).current;
 
-export default function InicioScreen() {
-  const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-  const [searchQuery, setSearchQuery] = useState("");
+  const abrirSidebar = () => {
+    setSidebarVisivel(true);
+    sidebarTranslateX.setValue(380);
+    requestAnimationFrame(() => {
+      Animated.spring(sidebarTranslateX, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 22,
+        stiffness: 220,
+      }).start();
+    });
+  };
+
+  const fecharSidebar = () => {
+    Animated.timing(sidebarTranslateX, {
+      toValue: 380,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) setSidebarVisivel(false);
+    });
+  };
+  const chatScrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+
+  const enviarMensagem = () => {
+    const texto = mensagem.trim();
+    if (!texto) return;
+
+    setMensagensEnviadas((mensagens) => [...mensagens, texto]);
+    setMensagem("");
+  };
+
+  useEffect(() => {
+    const keyboardSubscription = Keyboard.addListener("keyboardDidShow", () => {
+      requestAnimationFrame(() => chatScrollRef.current?.scrollToEnd({ animated: true }));
+    });
+
+    return () => keyboardSubscription.remove();
+  }, []);
+
+  useEffect(() => {
+    requestAnimationFrame(() => chatScrollRef.current?.scrollToEnd({ animated: true }));
+  }, [mensagensEnviadas]);
 
   const theme = {
-    bg: isDark ? "#090D16" : "#F8FAFC",
-    cardBg: isDark ? "#141C2E" : "#FFFFFF",
-    cardBorder: isDark ? "#1E293B" : "#F1F5F9",
-    textPrimary: isDark ? "#F8FAFC" : "#0F172A",
-    textSecondary: isDark ? "#94A3B8" : "#64748B",
-    primary: "#1D64ED",
-    inputBg: isDark ? "#0F172A" : "#EFF6FF",
-    inputBorder: isDark ? "#1E3A8A" : "#DBEAFE",
-    iconCircleBg: isDark ? "#1E293B" : "#EFF6FF",
-    divider: isDark ? "#1E293B" : "#F1F5F9",
+    bg: isDark ? "#0D1A2B" : "#F8FAFC",
+    panel: isDark ? "#192A41" : "#FFFFFF",
+    border: isDark ? "#2D4664" : "#DCE7F4",
+    text: isDark ? "#F5F9FF" : "#10213A",
+    muted: isDark ? "#AFC5E2" : "#63748C",
+    blue: "#1683F8",
+    icon: "#92C9FF",
   };
 
   return (
-    <SafeAreaView edges={["top"]} style={[styles.safeArea, { backgroundColor: theme.bg }]}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
+      <KeyboardAvoidingView
+        style={styles.screen}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        {/* 1. Header: Saudação & Notificações */}
-        <View style={styles.header}>
+        <View style={[styles.header, { borderBottomColor: theme.border }]}>
           <View>
-            <Text style={[styles.greetingTitle, { color: theme.textPrimary }]}>
-              Olá, Cliente
-            </Text>
-            <Text style={[styles.greetingSubtitle, { color: theme.textSecondary }]}>
-              O que vamos sintetizar?
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.notificationButton}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Bell size={24} color={theme.primary} />
-            <View style={styles.notificationBadge} />
-          </TouchableOpacity>
-        </View>
-
-        {/* 2. Barra de Busca / Pergunte ao Sintetiza */}
-        <View
-          style={[
-            styles.searchBar,
-            {
-              backgroundColor: theme.inputBg,
-              borderColor: theme.inputBorder,
-            },
-          ]}
-        >
-          <Sparkles size={20} color={theme.primary} style={styles.searchIcon} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.primary }]}
-            placeholder="Pergunte ao Sintetiza..."
-            placeholderTextColor={"#2563EB"}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          <TouchableOpacity activeOpacity={0.7}>
-            <Search size={20} color={theme.primary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* 3. Banner Destaque: Nova conversa (WhatsApp) */}
-        <TouchableOpacity
-          style={styles.actionCard}
-          activeOpacity={0.88}
-          onPress={() => {}}
-        >
-          <View style={styles.actionCardLeft}>
-            <View style={styles.iconBadge}>
-              <WhatsAppIcon size={24} color="#FFFFFF" />
-            </View>
-            <View style={styles.actionCardTextContainer}>
-              <Text style={styles.actionCardTitle}>Nova conversa</Text>
-              <Text style={styles.actionCardSubtitle}>
-                Importe uma conversa do WhatsApp
+            <Text style={[styles.headerTitle, { color: theme.text }]}>Conversas</Text>
+            <View style={styles.statusRow}>
+              <View style={styles.statusDot} />
+              <Text style={[styles.statusText, { color: theme.muted }]}>
+                Assistente de conversas
               </Text>
             </View>
           </View>
-          <View style={styles.actionCardButton}>
-            <Plus size={20} color="#1D64ED" strokeWidth={2.8} />
-          </View>
-        </TouchableOpacity>
-
-        {/* 4. Seção: Visão geral */}
-        <View style={styles.section}>
-          <View
-            style={[
-              styles.overviewCard,
-              {
-                backgroundColor: theme.cardBg,
-                borderColor: theme.cardBorder,
-              },
-            ]}
-          >
-            {/* Coluna 1: Espaços */}
-            <View style={styles.overviewItem}>
-              <Folder size={20} color={theme.primary} />
-              <Text style={[styles.overviewNumber, { color: theme.textPrimary }]}>4</Text>
-              <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>Espaços</Text>
-            </View>
-
-            <View style={[styles.overviewDivider, { backgroundColor: theme.divider }]} />
-
-            {/* Coluna 2: Tarefas */}
-            <View style={styles.overviewItem}>
-              <CircleCheck size={20} color={theme.primary} />
-              <Text style={[styles.overviewNumber, { color: theme.textPrimary }]}>8</Text>
-              <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>Tarefas</Text>
-            </View>
-
-            <View style={[styles.overviewDivider, { backgroundColor: theme.divider }]} />
-
-            {/* Coluna 3: Pendências */}
-            <View style={styles.overviewItem}>
-              <TriangleAlert size={20} color={theme.primary} />
-              <Text style={[styles.overviewNumber, { color: theme.textPrimary }]}>3</Text>
-              <Text style={[styles.overviewLabel, { color: theme.textSecondary }]}>Pendências</Text>
-            </View>
+          <View style={styles.headerActions}>
+            <Pressable accessibilityLabel="Importar conversa" hitSlop={8}>
+              <Upload size={21} color={theme.icon} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Abrir resumos"
+              hitSlop={8}
+              onPress={abrirSidebar}
+            >
+              <BookOpen size={21} color={theme.icon} />
+            </Pressable>
           </View>
         </View>
 
-        {/* 5. Seção: Seus espaços */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Seus espaços</Text>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => router.push("/espacos" as any)}
-              style={styles.seeMoreButton}
+        <Modal
+          visible={sidebarVisivel}
+          transparent
+          animationType="none"
+          onRequestClose={fecharSidebar}
+        >
+          <View style={styles.sidebarOverlay}>
+            <Pressable
+              style={styles.sidebarBackdrop}
+              onPress={fecharSidebar}
+              accessibilityLabel="Fechar histórico"
+            />
+            <Animated.View
+              style={[
+                styles.sidebar,
+                { backgroundColor: theme.panel },
+                { transform: [{ translateX: sidebarTranslateX }] },
+              ]}
             >
-              <Text style={styles.seeMoreText}>Ver →</Text>
-            </TouchableOpacity>
-          </View>
+              <View style={styles.sidebarHeader}>
+                <Text style={[styles.sidebarTitle, { color: theme.text }]}>
+                  Conversas
+                </Text>
+                <Pressable
+                  onPress={fecharSidebar}
+                  accessibilityLabel="Fechar"
+                  style={styles.sidebarClose}
+                >
+                  <Text style={[styles.sidebarCloseText, { color: theme.muted }]}>×</Text>
+                </Pressable>
+              </View>
 
-          {/* Espaço 1: Trabalho */}
-          <TouchableOpacity
-            style={[
-              styles.spaceCard,
-              {
-                backgroundColor: theme.cardBg,
-                borderColor: theme.cardBorder,
-              },
-            ]}
-            activeOpacity={0.7}
-            onPress={() => router.push("/artigo/1")}
-          >
-            <View style={styles.spaceCardLeft}>
-              <View
-                style={[
-                  styles.spaceIconContainer,
-                  { backgroundColor: theme.iconCircleBg },
-                ]}
+              <Pressable
+                style={[styles.newConversationButton, { backgroundColor: theme.blue }]}
+                onPress={() => {
+                  setMensagensEnviadas([]);
+                  setMensagem("");
+                  fecharSidebar();
+                }}
               >
-                <Briefcase size={20} color={theme.primary} />
-              </View>
-              <View style={styles.spaceTextContainer}>
-                <Text style={[styles.spaceTitle, { color: theme.textPrimary }]}>Trabalho</Text>
-                <Text style={[styles.spaceSubtitle, { color: theme.textSecondary }]}>
-                  5 tarefas • 2 pendências
-                </Text>
-              </View>
-            </View>
-            <ChevronRight size={20} color="#94A3B8" />
-          </TouchableOpacity>
+                <Plus size={18} color="#FFFFFF" />
+                <Text style={styles.newConversationText}>Nova conversa</Text>
+              </Pressable>
 
-          {/* Espaço 2: Faculdade */}
-          <TouchableOpacity
-            style={[
-              styles.spaceCard,
-              {
-                backgroundColor: theme.cardBg,
-                borderColor: theme.cardBorder,
-              },
-            ]}
-            activeOpacity={0.7}
-            onPress={() => router.push("/artigo/2")}
-          >
-            <View style={styles.spaceCardLeft}>
-              <View
-                style={[
-                  styles.spaceIconContainer,
-                  { backgroundColor: theme.iconCircleBg },
-                ]}
-              >
-                <GraduationCap size={20} color={theme.primary} />
-              </View>
-              <View style={styles.spaceTextContainer}>
-                <Text style={[styles.spaceTitle, { color: theme.textPrimary }]}>Faculdade</Text>
-                <Text style={[styles.spaceSubtitle, { color: theme.textSecondary }]}>
-                  2 tarefas • 1 pendência
-                </Text>
-              </View>
-            </View>
-            <ChevronRight size={20} color="#94A3B8" />
-          </TouchableOpacity>
-        </View>
+              <Text style={[styles.sidebarSectionLabel, { color: theme.muted }]}>
+                RECENTES
+              </Text>
+              {["Conversa sobre tarefas", "Planejamento da semana", "Notas da faculdade"].map(
+                (conversa) => (
+                  <Pressable
+                    key={conversa}
+                    style={[styles.conversationItem, { borderBottomColor: theme.border }]}
+                    onPress={fecharSidebar}
+                  >
+                    <MessageSquare size={17} color={theme.icon} />
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.conversationItemText, { color: theme.text }]}
+                    >
+                      {conversa}
+                    </Text>
+                  </Pressable>
+                )
+              )}
+            </Animated.View>
+          </View>
+        </Modal>
 
-        {/* 6. Seção: Próximas tarefas */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Próximas tarefas</Text>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => router.push("/tarefas" as any)}
-              style={styles.seeMoreButton}
-            >
-              <Text style={styles.seeMoreText}>Ver →</Text>
-            </TouchableOpacity>
+        <ScrollView
+          ref={chatScrollRef}
+          style={styles.content}
+          contentContainerStyle={styles.contentContainer}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.importVisual}>
+            <View style={styles.whatsappCircle}>
+              <MessageSquare size={34} color="#FFFFFF" fill="#FFFFFF" />
+            </View>
+            <Text style={[styles.arrow, { color: theme.icon }]}>→</Text>
+            <View style={[styles.fileIconBox, { backgroundColor: "#23456F" }]}>
+              <FileText size={38} color={theme.icon} />
+            </View>
+            <Text style={[styles.extraLabel, { color: theme.icon }]}>RECURSO EXTRA</Text>
           </View>
 
-          <View
-            style={[
-              styles.tasksCard,
-              {
-                backgroundColor: theme.cardBg,
-                borderColor: theme.cardBorder,
-              },
-            ]}
+          <Text style={[styles.title, { color: theme.text }]}>
+            Da conversa para a lista de tarefas
+          </Text>
+          <Text style={[styles.description, { color: theme.muted }]}>
+            Importe uma conversa para encontrar o que precisa{"\n"}
+            ser feito. A IA resume o texto e sugere tarefas para{"\n"}
+            você revisar e criar.
+          </Text>
+
+          <Pressable
+            style={[styles.uploadButton, { backgroundColor: theme.blue }]}
+            accessibilityRole="button"
           >
-            {/* Tarefa 1 */}
-            <TouchableOpacity
-              style={styles.taskItem}
-              activeOpacity={0.7}
-              onPress={() => router.push("/artigo/1")}
-            >
-              <View style={[styles.taskDot, { backgroundColor: "#EF4444" }]} />
-              <View style={styles.taskContent}>
-                <Text style={[styles.taskTitle, { color: theme.textPrimary }]}>
-                  Enviar dados — <Text style={styles.taskDueDate}>Hoje</Text>
-                </Text>
-                <View style={styles.taskMeta}>
-                  <Briefcase size={13} color={theme.textSecondary} style={styles.taskMetaIcon} />
-                  <Text style={[styles.taskMetaText, { color: theme.textSecondary }]}>Trabalho</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
+            <Upload size={18} color="#FFFFFF" />
+            <Text style={styles.uploadButtonText}>Selecionar arquivo</Text>
+          </Pressable>
 
-            <View style={[styles.taskDivider, { backgroundColor: theme.divider }]} />
+          <Text style={[styles.dropHint, { color: theme.muted }]}>
+            ou arraste o arquivo para cá
+          </Text>
+          <Text style={[styles.fileHint, { color: theme.muted }]}>
+            Arquivo .txt exportado do WhatsApp · até 10 MB
+          </Text>
 
-            {/* Tarefa 2 */}
-            <TouchableOpacity
-              style={styles.taskItem}
-              activeOpacity={0.7}
-              onPress={() => router.push("/artigo/2")}
-            >
-              <View style={[styles.taskDot, { backgroundColor: "#F59E0B" }]} />
-              <View style={styles.taskContent}>
-                <Text style={[styles.taskTitle, { color: theme.textPrimary }]}>
-                  Entregar trabalho — <Text style={styles.taskDueDate}>Amanhã</Text>
-                </Text>
-                <View style={styles.taskMeta}>
-                  <GraduationCap size={13} color={theme.textSecondary} style={styles.taskMetaIcon} />
-                  <Text style={[styles.taskMetaText, { color: theme.textSecondary }]}>Faculdade</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-
-            <View style={[styles.taskDivider, { backgroundColor: theme.divider }]} />
-
-            {/* Tarefa 3 */}
-            <TouchableOpacity
-              style={styles.taskItem}
-              activeOpacity={0.7}
-              onPress={() => router.push("/artigo/1")}
-            >
-              <View style={[styles.taskDot, { backgroundColor: "#10B981" }]} />
-              <View style={styles.taskContent}>
-                <Text style={[styles.taskTitle, { color: theme.textPrimary }]}>
-                  Estudar instalação — <Text style={styles.taskDueDate}>25/09</Text>
-                </Text>
-                <View style={styles.taskMeta}>
-                  <Briefcase size={13} color={theme.textSecondary} style={styles.taskMetaIcon} />
-                  <Text style={[styles.taskMetaText, { color: theme.textSecondary }]}>Trabalho</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
+          <View style={styles.helpRow}>
+            <Pressable style={styles.helpAction}>
+              <HelpCircle size={15} color={theme.text} />
+              <Text style={[styles.helpText, { color: theme.text }]}>Como exportar</Text>
+            </Pressable>
+            <Pressable style={styles.helpAction}>
+              <FileText size={15} color={theme.text} />
+              <Text style={[styles.helpText, { color: theme.text }]}>Usar um exemplo</Text>
+            </Pressable>
           </View>
+
+          <View style={styles.aiMessageRow}>
+            <View style={[styles.aiAvatar, { backgroundColor: theme.blue }]}>
+              <Bot size={18} color="#FFFFFF" />
+              <View style={styles.aiAvatarStatus} />
+            </View>
+            <View style={[styles.aiMessage, { backgroundColor: theme.panel, borderColor: theme.border }]}>
+              <Text style={[styles.aiMessageText, { color: theme.text }]}>
+                <Text style={styles.aiMessageHeading}>Não entendi 🤔</Text>
+                {"\n"}Sua mensagem ("asd") parece ter sido enviada por engano. Me diga o que você precisa e eu ajudo.
+                {"\n"}<Text style={styles.aiMessageBold}>O que posso fazer por você:</Text>
+                {"\n"}{"\n"}•  <Text style={styles.aiMessageBold}>Analisar uma conversa do WhatsApp:</Text> importe um arquivo <Text style={styles.aiCode}>.txt</Text> exportado pelo WhatsApp usando o botão de upload. A partir dele, eu identifico as tarefas acionáveis (com responsável e prazo) e proponho o registro delas.
+                {"\n"}{"\n"}•  <Text style={styles.aiMessageBold}>Organizar suas tarefas:</Text> criar, editar, concluir, reabrir ou excluir tarefas, agrupadas por espaço (ex.: Faculdade, Trabalho, Pessoal).
+                {"\n"}{"\n"}•  <Text style={styles.aiMessageBold}>Consultar o que já está salvo:</Text> hoje você tem 2 tarefas registradas, sendo 1 pendente (prazo 2026-11-11) e 1 concluída no espaço Faculdade.
+                {"\n"}Quer começar importando uma conversa ou ver suas tarefas em detalhe?
+              </Text>
+              <Text style={[styles.aiMessageTime, { color: theme.muted }]}>22:09</Text>
+            </View>
+          </View>
+
+          {mensagensEnviadas.map((texto, index) => (
+            <View key={`${index}-${texto}`}>
+              <View style={[styles.userMessage, { backgroundColor: theme.blue }]}>
+                <Text style={styles.userMessageText}>{texto}</Text>
+                <Text style={styles.userMessageTime}>Agora</Text>
+              </View>
+              <View style={styles.aiMessageRow}>
+                <View style={[styles.aiAvatar, { backgroundColor: theme.blue }]}>
+                  <Bot size={18} color="#FFFFFF" />
+                  <View style={styles.aiAvatarStatus} />
+                </View>
+                <View
+                  style={[
+                    styles.aiMessage,
+                    { backgroundColor: theme.panel, borderColor: theme.border },
+                  ]}
+                >
+                  <Text style={[styles.aiMessageText, { color: theme.text }]}>
+                    <Text style={styles.aiMessageHeading}>Entendi!</Text>
+                    {"\n"}Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+                    Praesent commodo cursus magna, vel scelerisque nisl consectetur.
+                    {"\n\n"}Vestibulum id ligula porta felis euismod semper. Integer
+                    posuere erat a ante venenatis dapibus posuere velit aliquet.
+                  </Text>
+                  <Text style={[styles.aiMessageTime, { color: theme.muted }]}>Agora</Text>
+                </View>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={[styles.composer, { borderTopColor: theme.border, backgroundColor: theme.bg }]}>
+          <View style={[styles.inputWrap, { backgroundColor: theme.panel, borderColor: theme.border }]}>
+            <TextInput
+              value={mensagem}
+              onChangeText={setMensagem}
+              placeholder="Faça uma pergunta..."
+              placeholderTextColor={theme.muted}
+              style={[styles.input, { color: theme.text }]}
+              returnKeyType="send"
+              onSubmitEditing={enviarMensagem}
+            />
+          </View>
+          <Pressable
+            style={[
+              styles.sendButton,
+              { backgroundColor: mensagem.trim() ? theme.blue : theme.muted },
+            ]}
+            accessibilityLabel="Enviar"
+            accessibilityRole="button"
+            disabled={!mensagem.trim()}
+            onPress={enviarMensagem}
+          >
+            {mensagem.trim() ? (
+              <Send size={20} color="#FFFFFF" />
+            ) : (
+              <ArrowUp size={23} color="#FFFFFF" />
+            )}
+          </Pressable>
         </View>
-      </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 44,
-  },
+  safeArea: { flex: 1 },
+  screen: { flex: 1 },
   header: {
+    minHeight: 70,
+    paddingHorizontal: 17,
+    paddingTop: 16,
+    paddingBottom: 12,
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  greetingTitle: {
-    fontSize: 24,
+  headerTitle: { fontSize: 20, fontWeight: "700", letterSpacing: -0.3 },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 },
+  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#1BA567" },
+  statusText: { fontSize: 11 },
+  headerActions: { flexDirection: "row", gap: 28, paddingTop: 5, paddingRight: 6 },
+  sidebarOverlay: {
+    flex: 1,
+    flexDirection: "row",
+    backgroundColor: "rgba(0, 0, 0, 0.45)",
+  },
+  sidebarBackdrop: { flex: 1 },
+  sidebar: {
+    width: "82%",
+    maxWidth: 330,
+    paddingHorizontal: 18,
+    paddingTop: 56,
+    paddingBottom: 24,
+    elevation: 12,
+    shadowColor: "#000000",
+    shadowOffset: { width: -4, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+  },
+  sidebarHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 18,
+  },
+  sidebarTitle: { fontSize: 20, fontWeight: "700" },
+  sidebarClose: { padding: 4 },
+  sidebarCloseText: { fontSize: 28, lineHeight: 25, fontWeight: "300" },
+  newConversationButton: {
+    height: 46,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  newConversationText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  sidebarSectionLabel: {
+    fontSize: 10,
     fontWeight: "700",
-    letterSpacing: -0.4,
+    letterSpacing: 0.8,
+    marginTop: 26,
+    marginBottom: 8,
   },
-  greetingSubtitle: {
-    fontSize: 15,
-    marginTop: 4,
-    fontWeight: "400",
+  conversationItem: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  notificationButton: {
-    position: "relative",
-    padding: 6,
-    marginTop: 2,
+  conversationItemText: { flex: 1, fontSize: 14 },
+  content: { flex: 1 },
+  contentContainer: { alignItems: "center", paddingHorizontal: 17, paddingBottom: 24 },
+  importVisual: {
+    height: 143,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 13,
   },
-  notificationBadge: {
+  whatsappCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#24C168",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  arrow: { fontSize: 30, fontWeight: "300" },
+  fileIconBox: {
+    width: 54,
+    height: 70,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  extraLabel: {
     position: "absolute",
-    top: 6,
-    right: 6,
+    bottom: 8,
+    fontSize: 10,
+    letterSpacing: 0.3,
+  },
+  title: { fontSize: 19, fontWeight: "700", textAlign: "center", marginTop: 9 },
+  description: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    marginTop: 14,
+  },
+  uploadButton: {
+    width: "100%",
+    height: 53,
+    borderRadius: 11,
+    marginTop: 23,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  uploadButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
+  dropHint: { fontSize: 12, marginTop: 8 },
+  fileHint: { fontSize: 11, marginTop: 3 },
+  helpRow: { flexDirection: "row", gap: 24, marginTop: 18 },
+  helpAction: { flexDirection: "row", alignItems: "center", gap: 7 },
+  helpText: { fontSize: 12, fontWeight: "700" },
+  aiMessageRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginTop: 37,
+  },
+  aiAvatar: {
+    width: 23,
+    height: 23,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 9,
+  },
+  aiAvatarStatus: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#1D64ED",
-  },
-  searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    height: 52,
-    borderRadius: 16,
+    backgroundColor: "#22C55E",
     borderWidth: 1,
-    paddingHorizontal: 16,
-    marginBottom: 16,
+    borderColor: "#FFFFFF",
   },
-  searchIcon: {
-    marginRight: 10,
-  },
-  searchInput: {
+  aiMessage: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: "500",
-    paddingVertical: 0,
+    borderRadius: 15,
+    borderWidth: 1,
+    paddingHorizontal: 15,
+    paddingTop: 14,
+    paddingBottom: 11,
   },
-  actionCard: {
-    backgroundColor: "#1D64ED",
-    borderRadius: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    shadowColor: "#1D64ED",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    elevation: 4,
-    marginBottom: 20,
-  },
-  actionCardLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  iconBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-  },
-  actionCardTextContainer: {
-    flex: 1,
-  },
-  actionCardTitle: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 3,
-  },
-  actionCardSubtitle: {
-    color: "rgba(255, 255, 255, 0.88)",
-    fontSize: 12.5,
-    lineHeight: 17,
-    fontWeight: "400",
-  },
-  actionCardButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  section: {
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    letterSpacing: -0.3,
-  },
-  seeMoreButton: {
-    paddingVertical: 4,
-    paddingLeft: 8,
-  },
-  seeMoreText: {
-    color: "#1D64ED",
-    fontSize: 14,
+  aiMessageText: { fontSize: 14, lineHeight: 20 },
+  aiMessageHeading: { color: "#73B9FF", fontWeight: "700" },
+  aiMessageBold: { fontWeight: "700" },
+  aiCode: {
+    backgroundColor: "#DCE8F5",
+    color: "#183452",
     fontWeight: "600",
+    paddingHorizontal: 3,
   },
-  overviewCard: {
+  aiMessageTime: { fontSize: 10, alignSelf: "flex-end", marginTop: 4 },
+  userMessage: {
+    alignSelf: "flex-end",
+    maxWidth: "82%",
     borderRadius: 16,
-    borderWidth: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 8,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingTop: 11,
+    paddingBottom: 8,
+  },
+  userMessageText: { color: "#FFFFFF", fontSize: 14, lineHeight: 20 },
+  userMessageTime: {
+    color: "#DCEEFF",
+    fontSize: 10,
+    alignSelf: "flex-end",
+    marginTop: 3,
+  },
+  composer: {
+    minHeight: 80,
+    paddingHorizontal: 13,
+    paddingTop: 11,
+    paddingBottom: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-around",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 8,
-    elevation: 1,
-    marginBottom: 18,
+    gap: 8,
   },
-  overviewItem: {
-    alignItems: "center",
+  inputWrap: {
     flex: 1,
-  },
-  overviewNumber: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginTop: 8,
-    marginBottom: 2,
-  },
-  overviewLabel: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  overviewDivider: {
-    width: 1,
-    height: 36,
-  },
-  spaceCard: {
-    borderRadius: 16,
+    height: 43,
+    borderRadius: 22,
     borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 1,
+    justifyContent: "center",
   },
-  spaceCardLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  spaceIconContainer: {
+  input: { paddingHorizontal: 16, fontSize: 14 },
+  sendButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 14,
-  },
-  spaceTextContainer: {
-    flex: 1,
-  },
-  spaceTitle: {
-    fontSize: 15.5,
-    fontWeight: "700",
-    marginBottom: 2,
-  },
-  spaceSubtitle: {
-    fontSize: 13,
-    fontWeight: "400",
-  },
-  tasksCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  taskItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    paddingVertical: 14,
-  },
-  taskDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginTop: 4,
-    marginRight: 12,
-  },
-  taskContent: {
-    flex: 1,
-  },
-  taskTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  taskDueDate: {
-    color: "#1D64ED",
-    fontWeight: "600",
-  },
-  taskMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  taskMetaIcon: {
-    marginRight: 5,
-  },
-  taskMetaText: {
-    fontSize: 12.5,
-    fontWeight: "400",
-  },
-  taskDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: 24,
   },
 });

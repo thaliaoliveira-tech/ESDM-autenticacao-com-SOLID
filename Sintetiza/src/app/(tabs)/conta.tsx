@@ -19,13 +19,22 @@ export default function ContaScreen() {
   const { user, signOut } = useAuth();
   const [notificacoes, setNotificacoes] = useState(true);
   const [resumosAutomaticos, setResumosAutomaticos] = useState(false);
+  const theme = {
+    bg: isDark ? "#0D1A2B" : "#F8FAFC",
+    panel: isDark ? "#192A41" : "#FFFFFF",
+    border: isDark ? "#2D4664" : "#DCE7F4",
+    text: isDark ? "#F5F9FF" : "#10213A",
+    muted: isDark ? "#AFC5E2" : "#63748C",
+    blue: "#1683F8",
+    danger: "#FF6675",
+  };
 
   return (
     <SafeAreaView
       edges={["top"]}
       style={[
         styles.safeArea,
-        { backgroundColor: isDark ? "#000000" : "#F2F2F7" },
+        { backgroundColor: theme.bg },
       ]}
     >
       <ScrollView
@@ -37,7 +46,7 @@ export default function ContaScreen() {
           <Text
             style={[
               styles.title,
-              { color: isDark ? "#FFFFFF" : "#000000" },
+              { color: theme.text },
             ]}
           >
             Conta
@@ -48,7 +57,7 @@ export default function ContaScreen() {
         <View
           style={[
             styles.profileCard,
-            { backgroundColor: isDark ? "#1C1C1E" : "#FFFFFF" },
+            { backgroundColor: theme.panel, borderColor: theme.border },
           ]}
         >
           <View style={styles.avatar}>
@@ -58,7 +67,7 @@ export default function ContaScreen() {
             <Text
               style={[
                 styles.profileName,
-                { color: isDark ? "#FFFFFF" : "#1C1C1E" },
+                { color: theme.text },
               ]}
             >
               Equipe Sintetiza
@@ -66,7 +75,7 @@ export default function ContaScreen() {
             <Text
               style={[
                 styles.profileEmail,
-                { color: isDark ? "#8E8E93" : "#6E6E73" },
+                { color: theme.muted },
               ]}
             >
               auth-poc@sintetiza.app
@@ -78,7 +87,7 @@ export default function ContaScreen() {
         <Text
           style={[
             styles.sectionTitle,
-            { color: isDark ? "#8E8E93" : "#6E6E73" },
+            { color: theme.muted },
           ]}
         >
           PREFERÊNCIAS
@@ -86,14 +95,14 @@ export default function ContaScreen() {
         <View
           style={[
             styles.groupedSection,
-            { backgroundColor: isDark ? "#1C1C1E" : "#FFFFFF" },
+            { backgroundColor: theme.panel, borderColor: theme.border },
           ]}
         >
           <View style={styles.row}>
             <Text
               style={[
                 styles.rowLabel,
-                { color: isDark ? "#FFFFFF" : "#1C1C1E" },
+                { color: theme.text },
               ]}
             >
               Notificações
@@ -101,13 +110,14 @@ export default function ContaScreen() {
             <Switch
               value={notificacoes}
               onValueChange={setNotificacoes}
-              trackColor={{ false: "#767577", true: "#34C759" }}
+              trackColor={{ false: theme.border, true: theme.blue }}
+              thumbColor="#FFFFFF"
             />
           </View>
           <View
             style={[
               styles.separator,
-              { backgroundColor: isDark ? "#2C2C2E" : "#E5E5EA" },
+              { backgroundColor: theme.border },
             ]}
           />
         </View>
@@ -116,7 +126,7 @@ export default function ContaScreen() {
         <Text
           style={[
             styles.sectionTitle,
-            { color: isDark ? "#8E8E93" : "#6E6E73" },
+            { color: theme.muted },
           ]}
         >
           SOBRE
@@ -124,14 +134,14 @@ export default function ContaScreen() {
         <View
           style={[
             styles.groupedSection,
-            { backgroundColor: isDark ? "#1C1C1E" : "#FFFFFF" },
+            { backgroundColor: theme.panel, borderColor: theme.border },
           ]}
         >
           <View style={styles.row}>
             <Text
               style={[
                 styles.rowLabel,
-                { color: isDark ? "#FFFFFF" : "#1C1C1E" },
+                { color: theme.text },
               ]}
             >
               Versão do App
@@ -139,7 +149,7 @@ export default function ContaScreen() {
             <Text
               style={[
                 styles.rowValue,
-                { color: isDark ? "#8E8E93" : "#8E8E93" },
+                { color: theme.muted },
               ]}
             >
               1.0.0
@@ -148,19 +158,19 @@ export default function ContaScreen() {
           <View
             style={[
               styles.separator,
-              { backgroundColor: isDark ? "#2C2C2E" : "#E5E5EA" },
+              { backgroundColor: theme.border },
             ]}
           />
           <TouchableOpacity style={styles.row} activeOpacity={0.7}>
             <Text
               style={[
                 styles.rowLabel,
-                { color: isDark ? "#FFFFFF" : "#1C1C1E" },
+                { color: theme.text },
               ]}
             >
               Termos & Privacidade
             </Text>
-            <Text style={{ color: "#8E8E93", fontSize: 18 }}>›</Text>
+            <Text style={{ color: theme.muted, fontSize: 18 }}>›</Text>
           </TouchableOpacity>
         </View>
 
@@ -168,7 +178,7 @@ export default function ContaScreen() {
         <View
           style={[
             styles.groupedSection,
-            { backgroundColor: isDark ? "#1C1C1E" : "#FFFFFF", marginTop: 24 },
+            { backgroundColor: theme.panel, borderColor: theme.border, marginTop: 24 },
           ]}
         >
           <TouchableOpacity
@@ -179,7 +189,7 @@ export default function ContaScreen() {
               router.replace("/login");
             }}
           >
-            <Text style={styles.logoutText}>Encerrar Sessão</Text>
+            <Text style={[styles.logoutText, { color: theme.danger }]}>Encerrar Sessão</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -193,21 +203,22 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 40,
+    paddingTop: 22,
+    paddingBottom: 120,
   },
   header: {
-    marginBottom: 20,
+    marginBottom: 18,
   },
   title: {
-    fontSize: 34,
+    fontSize: 20,
     fontWeight: "700",
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
   profileCard: {
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 16,
+    borderWidth: 1,
     padding: 16,
     marginBottom: 28,
   },
@@ -215,7 +226,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#007AFF",
+    backgroundColor: "#1683F8",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 16,
@@ -245,6 +256,7 @@ const styles = StyleSheet.create({
   },
   groupedSection: {
     borderRadius: 14,
+    borderWidth: 1,
     overflow: "hidden",
     marginBottom: 24,
   },
@@ -266,9 +278,7 @@ const styles = StyleSheet.create({
     marginLeft: 16,
   },
   logoutText: {
-    color: "#FF3B30",
     fontSize: 16,
     fontWeight: "600",
   },
 });
-
