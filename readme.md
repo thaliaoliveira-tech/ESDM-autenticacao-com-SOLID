@@ -68,6 +68,11 @@ ESDM-autenticacao-com-SOLID/
 │   ├── test/                 # Testes unitários, de integração (SQLite real) e E2E
 │   └── docs/                 # Arquitetura, banco, módulos, fluxos e Swagger/OpenAPI
 │
+├── frontend/                 # Front-end web (HTML + JS + Vite) integrado à API
+│   ├── js/api/               # Cliente HTTP: token, refresh, erros, SSE do chat
+│   ├── js/pages/             # Telas: acesso, Hoje/Tarefas, Espaços, Conversas, Conta
+│   └── public/               # Fontes, ícones, Tailwind e service worker
+│
 └── Sintetiza/                # Aplicativo Mobile (React Native + Expo)
     ├── src/
     │   ├── app/              # Rotas e páginas (Expo Router)
@@ -124,7 +129,21 @@ A API estará rodando em `http://localhost:3000`. Você pode acessar a documenta
 
 ---
 
-### 2️⃣ Frontend (React Native / Expo)
+### 2️⃣ Frontend Web (integrado à API)
+
+Com a API rodando, em outro terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Abra o endereço mostrado pelo Vite (`http://localhost:5173`, ou a próxima porta livre). O Vite repassa `/api/*` para `http://localhost:3000`. Detalhes em [`frontend/README.md`](frontend/README.md).
+
+---
+
+### 3️⃣ Frontend Mobile (React Native / Expo)
 
 1. Em um novo terminal, acesse a pasta do aplicativo:
    ```bash

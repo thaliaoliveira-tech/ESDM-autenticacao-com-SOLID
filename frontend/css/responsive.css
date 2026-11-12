@@ -1,0 +1,35 @@
+@media (max-width: 480px) {
+  html { background: var(--color-surface); }
+  body { padding: 0; display: block; }
+  .panel {
+    width: 100%;
+    min-height: max(834px, 100svh);
+    border-radius: 0;
+    box-shadow: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .home-brand { margin-top: calc(152px + max(0px, (100svh - 834px) * .25)); }
+  .panel--home { min-height: max(720px, 100svh); }
+  .guest-button { bottom: max(38px, calc(60px + env(safe-area-inset-bottom, 0px))); }
+}
+@media (max-width: 360px) {
+  :root { --panel-padding: 20px; }
+  .brand-name { font-size: 34px; }
+  .home-brand .brand-name { font-size: 40px; }
+}
+@media (max-height: 760px) {
+  body { padding-top: 20px; padding-bottom: 20px; }
+  .panel { min-height: 720px; }
+  .home-brand { margin-top: 105px; }
+  .home-actions { margin-top: 52px; }
+  .guest-button { bottom: 30px; }
+  .auth-form { margin-top: 24px; }
+  .register .auth-form { margin-top: 18px; }
+  .auth-footer { margin-top: 20px; margin-bottom: 25px; }
+  .register .auth-footer { margin-top: 18px; margin-bottom: 25px; }
+  .register .submit-button { margin-top: 16px; }
+}
+@media (max-width: 480px) and (max-height: 760px) {
+  body { padding: 0; }
+  .panel { min-height: max(720px, 100svh); }
+}
