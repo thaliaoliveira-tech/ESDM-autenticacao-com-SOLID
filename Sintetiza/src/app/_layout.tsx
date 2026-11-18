@@ -4,13 +4,29 @@ import { useColorScheme } from "react-native";
 import { AuthProvider } from "../context/AuthContext";
 import { useAuthMiddleware } from "../middleware/useAuthMiddleware";
 
+// Rota inicial do Stack raiz quando a URL não aponta para uma tela específica
+// ou quando a rota pedida está protegida (convidados começam em /welcome).
+export const unstable_settings = {
+  initialRouteName: "welcome",
+};
+
 function NavigationLayout() {
-  const REQUIRE_AUTH = false;
+  const REQUIRE_AUTH = true;
   const { isAuthenticated } = useAuthMiddleware({ requireAuth: REQUIRE_AUTH });
   const allowTabs = !REQUIRE_AUTH || isAuthenticated;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      {/* Tela de Boas-vindas (Onboarding): primeira da pilha, é a rota inicial de convidados */}
+      <Stack.Screen
+        name="welcome"
+        options={{
+          headerShown: false,
+          gestureEnabled: false,
+          animation: "slide_from_left",
+        }}
+      />
+
       {/* Abas com gesto de voltar desativado */}
       <Stack.Protected guard={allowTabs}>
         <Stack.Screen
@@ -21,16 +37,6 @@ function NavigationLayout() {
           }}
         />
       </Stack.Protected>
-
-      {/* Tela de Boas-vindas (Onboarding) */}
-      <Stack.Screen
-        name="welcome"
-        options={{
-          headerShown: false,
-          gestureEnabled: false,
-          animation: "slide_from_left",
-        }}
-      />
 
       {/* Tela de Login */}
       <Stack.Screen

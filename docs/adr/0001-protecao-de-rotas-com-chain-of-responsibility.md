@@ -10,6 +10,10 @@ O aplicativo possui rotas públicas de autenticação e onboarding (`welcome`,
 `login` e `register`) e rotas que devem ser acessíveis somente por usuários
 autenticados, como as abas principais e as telas de conteúdo.
 
+As rotas ficam em `Sintetiza/src/app/`. As públicas são `welcome.tsx`,
+`login.tsx` e `register.tsx`. As privadas são o grupo `(tabs)/`, `resumos.tsx` e
+`artigo/[id].tsx`.
+
 As decisões de navegação dependem de mais de uma condição:
 
 - o estado de autenticação ainda pode estar sendo carregado;
@@ -18,8 +22,9 @@ As decisões de navegação dependem de mais de uma condição:
 - o comportamento de proteção deve poder ser ativado ou desativado conforme o
   estágio do aplicativo.
 
-Concentrar todas essas regras em um único hook ou componente de navegação
-torna o fluxo difícil de evoluir e mistura responsabilidades distintas. Também
+Sem uma estrutura dedicada, todas essas regras acabariam concentradas em um
+único hook (`useAuthMiddleware.ts`) ou componente de navegação
+(`app/_layout.tsx`). Isso torna o fluxo difícil de evoluir e mistura responsabilidades distintas. Também
 torna mais arriscado acrescentar novas regras, como onboarding incompleto,
 permissões ou manutenção da sessão.
 
@@ -41,10 +46,12 @@ A cadeia padrão será composta por:
 LoadingHandler -> AuthRequiredHandler -> GuestOnlyHandler
 ```
 
-O `NavigationPipeline` será responsável somente por montar e executar a
-cadeia. O hook `useAuthMiddleware` é o ponto de integração com o React, o Expo
-Router e o `AuthContext`; sua integração com a pipeline deve fornecer o callback
-de redirecionamento e o estado atual.
+O `NavigationPipeline` (`middleware/chain/NavigationPipeline.ts`) será
+responsável somente por montar e executar a cadeia. O hook `useAuthMiddleware`
+(`middleware/useAuthMiddleware.ts`) é o ponto de integração com o React, o Expo
+Router e o `AuthContext` (`context/AuthContext.tsx`); sua integração com a
+pipeline deve fornecer o callback de redirecionamento e o estado atual. O hook é
+chamado em `app/_layout.tsx`.
 
 O comportamento definido é:
 
@@ -55,8 +62,9 @@ O comportamento definido é:
 | Usuário autenticado em rota de convidado | redireciona para `/(tabs)` |
 | Nenhuma regra aplicável | mantém a rota atual |
 
-A proteção estrita permanece opt-in por meio de `requireAuth`, com valor
-`false` no estágio atual do aplicativo. Isso permite integrar a navegação antes
+A proteção estrita permanece opt-in por meio de `requireAuth` (opção de
+`useAuthMiddleware.ts`, definida pela constante `REQUIRE_AUTH` em
+`app/_layout.tsx`), com valor `false` no estágio atual do aplicativo. Isso permite integrar a navegação antes
 da conclusão da autenticação real sem bloquear o fluxo de desenvolvimento.
 
 ## Alternativas consideradas
@@ -115,9 +123,12 @@ Os contratos e a composição ficam em:
 - `Sintetiza/src/middleware/chain/handlers/AuthRequiredHandler.ts`
 - `Sintetiza/src/middleware/chain/handlers/GuestOnlyHandler.ts`
 
-O ponto de entrada do React é:
+O ponto de entrada do React, o estado de autenticação e o ponto de uso são:
 
 - `Sintetiza/src/middleware/useAuthMiddleware.ts`
+- `Sintetiza/src/context/AuthContext.tsx`
+- `Sintetiza/src/app/_layout.tsx`
+- `Sintetiza/src/middleware/chain/index.ts` (exporta a cadeia)
 
 Antes de habilitar `requireAuth` por padrão, devem ser concluídos:
 

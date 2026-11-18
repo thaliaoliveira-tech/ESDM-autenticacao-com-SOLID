@@ -1,6 +1,7 @@
-import { useEffect } from "react";
-import { useRouter, useSegments } from "expo-router";
+import { useEffect, useMemo } from "react";
+import { useRouter, useSegments, type Href } from "expo-router";
 import { useAuth } from "../context/AuthContext";
+import { NavigationPipeline } from "./chain";
 
 interface AuthMiddlewareOptions {
   /**
@@ -13,32 +14,30 @@ interface AuthMiddlewareOptions {
 /**
  * Middleware de Autenticação para Expo Router.
  *
- * Monitora as rotas acessadas e o estado de autenticação:
- * - Redireciona para /login se tentar acessar rotas protegidas sem autenticação.
- * - Redireciona para /(tabs) se já estiver autenticado e tentar acessar /login.
+ * Adaptador entre React/Expo Router/AuthContext e a NavigationPipeline
+ * (Chain of Responsibility). As regras ficam nos handlers:
+ * - Redireciona para /welcome se tentar acessar rotas protegidas sem autenticação.
+ * - Redireciona para /(tabs) se já estiver autenticado e tentar acessar rotas de convidado.
  */
 export function useAuthMiddleware(options: AuthMiddlewareOptions = { requireAuth: false }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const pipeline = useMemo(() => new NavigationPipeline(), []);
 
   useEffect(() => {
-    if (isLoading) return;
+    // A proteção é opt-in: sem requireAuth, a cadeia não é executada.
+    if (!options.requireAuth) return;
 
-    // Verifica se a rota atual é de autenticação / onboarding (ex: login, register, welcome)
-    const inAuthGroup = ["login", "register", "welcome"].includes(segments[0]);
-
-    // Se o middleware estiver configurado para exigir autenticação estrita
-    if (options.requireAuth) {
-      if (!isAuthenticated && !inAuthGroup) {
-        // Redireciona para welcome se não estiver autenticado
-        router.replace("/welcome");
-      } else if (isAuthenticated && inAuthGroup) {
-        // Redireciona para as abas principais se já estiver logado
-        router.replace("/(tabs)");
-      }
-    }
-  }, [isAuthenticated, segments, isLoading, options.requireAuth]);
+    pipeline.execute({
+      segments,
+      isAuthenticated,
+      isLoading,
+      user,
+      requireAuth: true,
+      redirect: (path) => router.replace(path as Href),
+    });
+  }, [isAuthenticated, segments, isLoading, user, options.requireAuth, pipeline]);
 
   return {
     isAuthenticated,

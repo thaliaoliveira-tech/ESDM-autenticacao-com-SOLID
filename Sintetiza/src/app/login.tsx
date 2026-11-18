@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, useNavigation } from "expo-router";
+import { useRouter } from "expo-router";
 import Svg, { Circle } from "react-native-svg";
 import { StatusBar } from "expo-status-bar";
 import { ChevronLeft, Mail, Lock, Eye, EyeOff } from "lucide-react-native";
@@ -23,31 +23,11 @@ const { width, height } = Dimensions.get("window");
 
 export default function LoginScreen() {
   const router = useRouter();
-  const navigation = useNavigation<any>();
   const { signIn, isLoading } = useAuth();
 
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-
-  // Ao entrar na tela de login, zera o caminho da stack e define 'welcome' como raiz
-  useEffect(() => {
-    const state = navigation.getState();
-    if (!state) return;
-
-    const routes = state.routes;
-    const isAlreadyWelcomeRoot =
-      routes.length === 2 &&
-      routes[0]?.name === "welcome" &&
-      routes[1]?.name === "login";
-
-    if (!isAlreadyWelcomeRoot) {
-      navigation.reset({
-        index: 1,
-        routes: [{ name: "welcome" }, { name: "login" }],
-      });
-    }
-  }, [navigation]);
 
   const handleLogin = async () => {
     await signIn(email, senha);
@@ -84,7 +64,7 @@ export default function LoginScreen() {
         <View style={styles.topBar}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() => router.replace("/welcome")}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             activeOpacity={0.7}
           >
